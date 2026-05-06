@@ -1,0 +1,136 @@
+Attribute VB_Name = "xlRCX"
+Option Explicit
+Option Compare Text
+
+Sub RCX_extend_tracking()
+'loops through both Exposure sheets, adds a new row with blanks for today
+'this runs when SAVING the workbook if the user is listed on the hidden ADMIN sheet
+Dim rL28D As Range, d As Byte, ws(1 To 2) As Worksheet, w As Byte, bInserted  As Boolean, iLoopCount As Byte
+Set ws(1) = ThisWorkbook.Sheets("Tracker")
+Set ws(2) = ThisWorkbook.Sheets("Exposure Tracker")
+For w = 1 To 2
+    Set rL28D = ws(w).Range("RCX_L28D")
+    d = Application.Match("Date", rL28D.EntireRow, 0) - 1
+    If rL28D.End(xlDown).Offset(0, d) < Int(Now) Then
+        bInserted = True
+        rL28D.End(xlDown).Offset(1).EntireRow.Insert
+        rL28D.End(xlDown).Offset(1).EntireRow.Hidden = False
+CopyAgain1:
+        iLoopCount = iLoopCount + 1
+        rL28D.End(xlDown).EntireRow.Copy
+        rL28D.End(xlDown).Offset(1).PasteSpecial
+        If iLoopCount > 5 Then  'note: iLoopCount will always be wmax (3) when completed
+            MsgBox "Problem with adding rows -- please do this manually", vbExclamation, "RCX Tracker"
+            Exit Sub
+        Else
+            If Application.CutCopyMode = False Then GoTo CopyAgain1 Else Application.CutCopyMode = False
+        End If
+        rL28D.End(xlDown).Offset(0, d) = Int(Now)
+        ws(w).Range(rL28D.End(xlDown).Offset(0, d + 1), rL28D.End(xlDown).Offset(0, d).End(xlToRight)).ClearContents
+    End If
+    While rL28D.Offset(1) = False
+        rL28D.Offset(1).EntireRow.Delete
+    Wend
+Next w
+If bInserted Then
+    If MsgBox("Table(s) extended -- attempt to transfer numbers from RCX automatically?" & vbLf & vbLf & "(RCX Report MUST be open already to do this automatically.)" _
+        , vbQuestion Or vbYesNo, "RCX Tracker") = vbNo Then Exit Sub
+    Call RCX_Transfer_Numbers
+End If
+End Sub
+
+Sub RCX_Transfer_Numbers()
+
+Dim wbSrc As Workbook
+On Error Resume Next
+Set wbSrc = Workbooks("Retail Commission Exceptions Report.xlsb")
+If wbSrc Is Nothing Then
+    MsgBox "RCX Report not found - transfer manually"
+    Exit Sub
+End If
+On Error GoTo 0
+
+On Error GoTo ErrorHandler
+Dim bErrorCode As Byte
+
+Dim wsSrc As Worksheet, rngSrc As Range
+Set wsSrc = wbSrc.Sheets("RCX Analysis")
+Dim bMgr As Byte, bRCX As Byte, bOvd As Byte, bBkg As Byte, bExp As Byte
+bErrorCode = 0
+Set rngSrc = wsSrc.Range("RCX_Analysis_Totals")  'header row
+
+bErrorCode = 1  'column names in source not correct or missing
+With Application
+    bMgr = .Match("Brand Manager", rngSrc, 0)
+    bRCX = .Match("RCX", rngSrc, 0)
+    bOvd = .Match("Overdue", rngSrc, 0)
+    bBkg = .Match("Bookings", rngSrc, 0)
+    bExp = .Match("Approx. Exposure", rngSrc, 0)
+End With
+
+Dim wsTgt As Worksheet, rngTgt As Range, rngTgtHdr As Range
+Dim tgt(1 To 2) As String, s As Byte
+Dim rSrcMgr As Range, m As Byte, h As Byte
+Dim sManager As String
+tgt(1) = "Tracker"
+tgt(2) = "Exposure Tracker"
+For s = 1 To 2
+bErrorCode = 20 + s  'error in identifying target cells
+    Set wsTgt = ThisWorkbook.Sheets(tgt(s))
+    If rngSrc.Cells(1).Offset(1) <> "" Then
+        Set rngSrc = wsSrc.Range(rngSrc, rngSrc.Cells(1).End(xlDown))  'entire pivot
+        Set rngTgtHdr = wsTgt.Range("RCX_Tracker_Names")  'this provides the relevant names to look up totals from rngSrc col 1
+        Set rngTgt = wsTgt.Range("RCX_Tracker")
+        Set rngTgt = rngTgt.Rows(rngTgt.Rows.Count - 2)  'new empty row
+        'ThisWorkbook.Activate
+        'wsTgt.Select
+        'rngTgt.Select
+        If Format(rngTgt.Cells(1), "yyyy-mm-dd") <> Format(Now, "yyyy-mm-dd") Then GoTo ErrorHandler
+    
+    'get Overall Totals and Manager totals from RCX Report
+    'target cells will be filled in first if they exist in source
+    'remaining cells will be zeroes
+bErrorCode = 30  'error in copying from source
+    'reset
+        m = 0
+        rngTgt.Cells(2) = 0
+        rngTgt.Cells(3) = 0
+        With wsSrc
+            'wbSrc.Activate
+            'rngSrc.Columns(bMgr).Select
+            For Each rSrcMgr In rngSrc.Columns(bMgr).Cells
+                m = m + 1
+                If rSrcMgr <> "Brand Manager" And rSrcMgr <> "" Then
+bErrorCode = 30 + m
+                'get Manager name
+                    sManager = rSrcMgr
+                'look it up in the target header row
+                    h = Application.Match(sManager, rngTgtHdr, 0)
+                'add the value into the correct cell
+                    If s = 1 Then
+                        rngTgt.Cells(2) = rngSrc.Cells(m, bRCX) + rngTgt.Cells(2)   'running total Exceptions
+                        rngTgt.Cells(3) = rngSrc.Cells(m, bOvd) + rngTgt.Cells(3)   'running total Overdue
+                        rngTgt.Cells(h) = rngSrc.Cells(m, bOvd)                     'this Manager Overdue
+                    End If
+                    If s = 2 Then
+                        rngTgt.Cells(2) = rngSrc.Cells(m, bBkg) + rngTgt.Cells(2) 'running total Exceptions
+                        rngTgt.Cells(3) = rngSrc.Cells(m, bExp) + rngTgt.Cells(3) 'running total Overdue
+                        rngTgt.Cells(h) = rngSrc.Cells(m, bExp)                 'this Manager
+                    End If
+                End If
+            Next rSrcMgr
+        End With
+    Else
+        'nothing to do, everything is zero, just fill zeroes across the table
+    End If
+    'fill zeroes across the table
+    For m = 1 To rngTgt.Cells.Count
+        If rngTgt.Cells(m) = "" Then rngTgt.Cells(m) = 0
+    Next m
+Next s
+
+Exit Sub
+
+ErrorHandler:
+    MsgBox "Invalid - check macro or transfer manually" & vbLf & vbLf & "ErrorCode: " & bErrorCode, vbCritical, "RCX_Transfer_Numbers"
+End Sub

@@ -1,0 +1,199 @@
+Attribute VB_Name = "xlArchive"
+Option Explicit
+Option Compare Text
+
+'Use this to add an Archive routine to your report.
+'1. Import the latest modArchive from M:\Automation\VBA\ and check for changes
+'2. Copy an existing Sub and edit to suit your report
+'3. add an Instr() to Sub do_Archive() to handle your new Sub
+'4. Export modArchive to M:\Automation\VBA\ when done
+
+'NB: using email *groups* doesn't work unless they can accept from external emails
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+
+'Version History:
+Public Const xlArchiveCodeVer As String = _
+"xlArchive v3.07"
+'v3.07 2020-11-06 13:35 - xlArchive_Backup: removed email constants, refers to modEmail now
+'v3.06 2020-10-22 15:34 - added Setups_Create_Daily_Backup, set absolute M drive path
+'v3.05 2019-10-23 16:07 - amended email addresses for emails
+'v3.04 2019-03-21 15:39 - removed [redacted] from failure email, just sends to P&C Insight
+'v3.03 2017-06-23 16:00 - removed TMSS, report no longer exists
+'v3.02 2017-06-22 12:16 - removed DBBPUM, report no longer exists
+'v3.01 2017-04-24 12:30 - amended TSPP to TS by Source PP, added TS WOW PP, added TS by Supplier PP
+'v3.00 2017-04-03 14:02 - added Demand Analysis and renamed TS_Backup to xlArchive_Backup
+'v2.00 2017-03-13 16:40 - code rewrite and simplification
+'from modArchive:
+'v1.10 2017-03-13 16:33 - changed TS by Week PP to use L4W four-weekly routine
+'v1.09 2017-01-24 13:19 - added exclusion for (NA Domestic) reports (temporary bugfix)
+'v1.08 2016-12-05 12:10 - added extra qualifier for TS by Week PP (same backup routine for both files, uses TSPP_Create_Weekly_Backup)
+'v1.07 2016-10-25 14:14 - added TSPP archive routine, removed TS_Peak routine
+'v1.06 2016-10-25 10:13 - added Pickups By Day archive routine
+'v1.05 2016-10-12 08:57 - added TM Supplier Summary archive routine
+'v1.04 2016-10-12 08:56 - added Peak December archive routine
+'v1.03 2016-10-12 08:53 - added Rate Exception archive routine
+'v1.02 2016-08-26 15:29 - added Daily Bookings archive routine
+'v1.01 2016-07-14 10:20 - added comments
+'v1.00 2016-07-14 10:04 - replicated from Trading Summary L4W archive routine
+
+Function xlArchiveVer() As String
+xlArchiveVer = xlArchiveCodeVer
+End Function
+
+Sub do_Archive()
+'Call this from modExtra
+'add your custom code here to be run during publish routine
+
+If InStr(ThisWorkbook.FullName, "\Testing\") > 0 Then
+    Exit Sub
+
+ElseIf InStr(ThisWorkbook.Name, "(NA Domestic)") > 0 Then
+    Exit Sub
+
+ElseIf InStr(ThisWorkbook.Name, "Trading Summary by Day") > 0 _
+    Or InStr(ThisWorkbook.Name, "Trading Summary by Source") > 0 _
+    Or InStr(ThisWorkbook.Name, "Trading Summary by Supplier") > 0 _
+    Or InStr(ThisWorkbook.Name, "Trading Summary WOW") > 0 _
+    Then
+    Call TS_Create_Weekly_Backup
+
+ElseIf InStr(ThisWorkbook.Name, "Trading Summary by Week") > 0 Then
+    Call TS_Create_4Weekly_Backup
+
+ElseIf InStr(ThisWorkbook.Name, "Pickups By Day") > 0 Then
+    Call PUByDay_Create_Weekly_Backup
+
+ElseIf InStr(ThisWorkbook.Name, "Rate Exception") > 0 Then
+    Call REx_Create_Daily_Backup
+
+ElseIf InStr(ThisWorkbook.Name, "PandC_Demand vs ") > 0 Then
+    Call Demand_Create_Daily_Backup
+
+ElseIf InStr(ThisWorkbook.Name, "Commercial Setups (nightly)") > 0 Then
+    Call Setups_Create_Daily_Backup
+
+End If
+
+End Sub
+
+Private Sub xlArchive_Backup(ByVal pthPub As String, ByVal pthBkp As String, ByVal sReportName As String)
+'v3.07 2020-11-06 13:35 - xlArchive_Backup: removed email constants, refers to modEmail now
+'v3.06 2020-10-22 15:34 - added Setups_Create_Daily_Backup, set absolute M drive path, added sReportName parameter
+'generic routine called from Subs below
+On Error GoTo ReportFail
+If Dir(pthBkp) <> "" Then
+    SetAttr pthBkp, vbNormal
+    Kill pthBkp
+End If
+FileCopy pthPub, pthBkp
+SetAttr pthBkp, vbReadOnly
+Exit Sub
+
+ReportFail:
+modEmail.SendEmail modEmail.cTriggerEmailTo, modEmail.cAdminEmailTo, , sReportName & ": archive failed", "<a href=" & Chr(34) & pthBkp & Chr(34) & ">" & pthBkp & "</a>", True, , , , , True
+End Sub
+
+Private Sub TS_Create_Weekly_Backup()
+'makes a copy of the report for each week (only runs Monday)
+
+If Weekday(Now, vbMonday) > 1 Then Exit Sub
+
+Dim sDate As String
+sDate = Format(Now + 1 - Weekday(Now, vbMonday), "yyyy-mm-dd")
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Trading Summary"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = Replace(pthPub, "1 Trading Meetings\", "1 Trading Meetings\Trading Summary Archive\")
+pthBkp = Replace(pthBkp, ".xlsb", " (" & sDate & ").xlsb")
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub
+
+Private Sub TS_Create_4Weekly_Backup()
+'makes a copy of the L4W file for each 4 week period (runs every 4th Monday, e.g. week 1, 5, 9, 13, etc.)
+
+If Weekday(Now, vbMonday) > 1 Then Exit Sub
+
+Const cWeekNums As String = "|1|5|9|13|17|21|25|29|33|37|41|45|49|53|"  'in which weeks we publish L4W (Monday)
+
+Dim sWeek As String, sYear As String
+sWeek = Application.WeekNum(Now, 21)
+If InStr(cWeekNums, "|" & sWeek & "|") = 0 Then Exit Sub
+sYear = Year(Now)
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Trading Summary (4wk)"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = Replace(pthPub, "1 Trading Meetings\", "1 Trading Meetings\Trading Summary Archive\")
+pthBkp = Replace(pthBkp, ".xlsb", " (" & sYear & " Wk " & sWeek & ").xlsb")
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub
+
+Private Sub REx_Create_Daily_Backup()
+'makes a copy of the Rate Exception file for each day
+
+Dim sDate As String
+sDate = Format(Now, "yyyy-mm-dd")  'today
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Rate Exception"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = Replace(pthPub, "Exception Reports\", "Exception Reports\Rate Exception Archive\")
+pthBkp = Replace(pthBkp, " (out of hours).xlsb", " (" & sDate & ").xlsb")
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub
+
+Private Sub Demand_Create_Daily_Backup()
+'makes a copy of the Rate Exception file for each day
+
+Dim sDate As String
+sDate = Format(Now - 1, "yyyy-mm-dd") 'yesterday
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Demand Analysis"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = Replace(pthPub, "Demand Analysis\", "Demand Analysis\Archive\")
+pthBkp = Replace(pthBkp, ".xlsb", " (" & sDate & ").xlsb")
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub
+
+Private Sub Setups_Create_Daily_Backup()
+'makes a copy of the Commercial Setups file for each day
+
+Dim sDate As String
+sDate = Format(Now - 1, "yyyy-mm-dd") 'yesterday
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Commercial Setups"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = sPathMDrive & "Automation\Compliance Archive\Commercial Setups\" & sReportName & " " & sDate & ".xlsb"
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub
+
+Private Sub PUByDay_Create_Weekly_Backup()
+'makes a copy of the file for each week (runs Monday)
+
+If Weekday(Now, vbMonday) > 1 Then Exit Sub
+
+Dim sDate As String
+sDate = Format(Now + 1 - Weekday(Now, vbMonday), "yyyy-mm-dd")
+
+Dim pthPub As String, pthBkp As String, sReportName As String
+sReportName = "Pickups by Day"
+pthPub = admin.Range("admin_OutputFile")
+pthBkp = Replace(pthPub, "3 Other\", "3 Other\Pickups By Day Archive\")
+pthBkp = Replace(pthBkp, "Pickups by Day.xlsb", "Pickups by Day (" & sDate & ").xlsb")
+
+Call xlArchive_Backup(pthPub, pthBkp, sReportName)
+
+End Sub

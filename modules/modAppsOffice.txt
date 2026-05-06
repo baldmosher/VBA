@@ -1,0 +1,334 @@
+Attribute VB_Name = "modAppsOffice"
+Option Explicit
+Option Compare Text
+
+'=========================================================================
+' VERSION HISTORY
+'=========================================================================
+Public Const modAppsOfficeCodeVer As String = _
+"modAppsOffice v5.01"
+'modAppsOffice
+'v5.01 2017-11-14 09:45 - added modAppsOfficeVer/modAppsOfficeCodeVer
+'v5.00 2017-11-14 09:45 - run_Excel: added bEnableEvents parameter
+'v4.10 2015-01-29 11:40 - restored after issue with iShare migration
+'v4.09 2014-09-30 16:34 - fixes issue with iShare migration
+'   v4.08   run_Excel: bugfix in error handler
+'   v4.07   run_Excel: added bForceVisibility (defaults to maoVisibleByDefault)
+'           run_Excel: added bForceVisibility
+'           XL_launch: changed XLvisible to bForceVisibility
+'   v4.06   mao_fix_path bugfix when pth includes fn
+'   v4.05   run_Access: permits use of VB "function()" as DBmacro
+'                       strQuery variable relabelled as SQLcommand
+'   v4.04   run_Access/run_Excel: persistence bugfix
+'   v4.03   run_Excel: RunNative bugfix
+'   v4.02   run_Access/run_Excel error handlers (Not DBapp/XLapp Is Nothing)
+'   v4.01   retired runOutlook_SendMail, use modEmail instead
+'   v4.00   added optional SharePoint domain to check when opening XL_WB
+'   v3.18   maoVisibleByDefault set Public for use with other modules
+'           XLlaunch: visibility bugfix
+'   v3.17   run_Excel: can specify Read-Only (rxlOpenReadOnly)
+'   v3.16   run_Excel: determine Read-Only/Editable from iShare/not
+'   v3.15   late bound references
+'   v3.14   changed Access.Application to Object, fixes Debug issue for
+'           users without MS Access installed - OL and XL still required
+'*************************************************************
+'   v3.13   minor bugfix in run_Excel (just saves a little time)
+'   v3.12   MAJOR BUGFIX in XLlaunch
+'*************************************************************
+'!! v3.11   fixed persistent DBapp and XLapp issue (Objects set Public)
+'           moved to GBMNCWSA050, annotations changed
+'   v3.10a  MAJOR BUGFIX mao_fix_path
+'*************************************************************
+'!! v3.10   FAULTY mao_fix_path adds the last slash to paths
+'*************************************************************
+'   v3.09   annotations improved, no functional change
+'   v3.08   run_AppName application objects changed to AppName.Application
+'           runOutlook_SendMail tested in 2010
+'           ** DOESN'T WORK IN OFFICE 2003 **
+'   v3.07   run_Access changed to function (so XLapp, DBapp not required)
+'   v3.03   runOutlook_SendMail sSubject, sRecipient, sBodyText, [DisplayFirst], [sAttach_pthfn1], [sAttach_pthfn2]
+'   v2.xx   run_Excel XLpth, XLfn, [XLmacro], [RunNative], [LeaveOpenWhenDone](v2.09), [OpenOnly](v3.03)
+'   v1.xx   run_Access DBpath, DBfn, [DBmacro], [DBquery], [strQuery], [LeaveOpenWhenDone](v2.09), [OpenOnly](v3.03)
+
+
+'References must be enabled via Tools > References
+'Public prevents app always closing when macro ends
+'--> must Set XXapp = Nothing to clean up
+Public DBapp As Object 'Access.Application  'requires Access object library
+Public OLapp As Object 'Outlook.Application 'requires Outlook object library
+Public XLapp As Object 'Excel.Application   'requires Excel object library
+
+Public Const maoVisibleByDefault As Boolean = True  'v3.18 set public for use with other modules
+    'set this to False for background-only operations
+
+Function modAppsOfficeVer() As String
+modAppsOfficeVer = modAppsOfficeCodeVer
+End Function
+
+Function run_Access(ByVal DBpath As String, ByVal DBfn As String _
+    , Optional ByVal DBmacro As String _
+    , Optional ByVal DBquery As String _
+    , Optional ByVal SQLcommand As String _
+    , Optional ByVal LeaveOpenWhenDone As Boolean _
+    , Optional ByVal OpenOnly As Boolean _
+    , Optional ByVal bForceVisibility As Boolean = maoVisibleByDefault) _
+    As Object 'v3.14 was Access.Application  'v3.08 requires Microsoft Access object library via Tools > References
+'v4.07 2013-11-04 14:04
+'runs Access and opens DB [then runs Query OR Macro OR SQL command]
+
+'DBpath   = "C:\JBA\"
+DBpath = mao_fix_path(DBpath)  'v3.10
+'DBfn   = "JBA G7 Detail.mdb"
+'DBmacro  = "macro name 1"
+'DBquery  = "query name 1"
+'SQLcommand = "SELECT stuff FROM table WHERE this"
+
+Set DBapp = Nothing  'v4.04
+
+Dim strcount As Byte, pp As String, tt As String
+Dim InXL As Boolean 'v3.07, v3.11
+If InStr(Application.Name, "Excel") > 0 Then InXL = True
+If InXL = True Then
+    Set XLapp = Application  'v3.07
+    XLapp.DisplayAlerts = False  'v3.07
+End If
+
+strcount = 0
+tt = "FATAL ERROR"
+pp = "Warning: can only process DBmacro OR DBquery OR SQLcommand." & vbLf
+If DBmacro <> "" Then
+    strcount = strcount + 1
+    pp = pp & " - specified DBmacro " & DBmacro & vbLf
+End If
+If DBquery <> "" Then
+    strcount = strcount + 1
+    pp = pp & " - specified DBquery " & DBquery & vbLf
+End If
+If SQLcommand <> "" Then
+    strcount = strcount + 1
+    pp = pp & " - specified SQLcommand " & SQLcommand & vbLf
+End If
+If (strcount = 0 And OpenOnly = False) _
+Or strcount > 1 Then
+    MsgBox pp, , tt
+    Exit Function
+End If
+
+Set run_Access = CreateObject("Access.Application")
+
+On Error GoTo ErrorHandler  'leaves DBapp <> Nothing on error
+
+With run_Access
+    .Visible = bForceVisibility
+'errors here means DBpath or DBfn is wrong
+    .OpenCurrentDatabase DBpath & DBfn
+'errors here could mean Excel Connection is not Read-Only
+'solution here:   http://social.msdn.microsoft.com/Forums/en/sqlintegrationservices/thread/d03e4b1a-6be0-4b3c-8b31-42d6fc79bf39
+    If OpenOnly = False Then
+        If DBmacro <> "" Then
+        'OL macro fails here doing Append macro - works when rerun - add a 2 second delay?
+        'Application.Wait Val(Now() + TimeSerial(0, 0, 5))
+            If Right(DBmacro, 2) = "()" Then  'v4.05 runs VB function or DB macro as required
+            'DBmacro ends with "()", run VB function
+                DBmacro = Left(DBmacro, Len(DBmacro) - 2)  'remove "()" from function name
+                run_Access.Run DBmacro
+            Else
+            'run DB macro
+                .DoCmd.RunMacro DBmacro
+            End If
+        ElseIf DBquery <> "" Then
+            .DoCmd.OpenQuery DBquery
+        ElseIf SQLcommand <> "" Then
+            .DoCmd.RunSQL SQLcommand
+        End If
+    End If
+    If maoVisibleByDefault = False Then
+        .Visible = OpenOnly
+    End If
+    If OpenOnly = False And LeaveOpenWhenDone = False Then
+        .CloseCurrentDatabase
+        .Quit
+        Set run_Access = Nothing
+    Else
+        If DBapp Is Nothing Then Set DBapp = run_Access 'Else MsgBox "Cannot persist >1 instance of Access"  'v3.11
+        Set run_Access = Nothing
+        .Visible = True
+        Set XLapp = Nothing
+        Exit Function  'v4.04 stops Access quitting
+    End If
+End With
+
+ErrorHandler:   'leaves DBapp <> Nothing
+
+Set DBapp = run_Access
+
+If InXL = True Then
+    XLapp.DisplayAlerts = True  'v3.07
+End If
+
+Set XLapp = Nothing
+
+End Function
+
+Function run_Excel(ByVal XLpth As String, ByVal XLfn As String _
+    , Optional ByVal XLmacro As String _
+    , Optional ByVal RunNative As Boolean _
+    , Optional ByVal LeaveOpenWhenDone As Boolean _
+    , Optional ByVal rxlOpenReadOnly As Boolean = False _
+    , Optional ByVal bForceVisibility As Boolean = maoVisibleByDefault _
+    , Optional ByVal bEnableEvents As Boolean = True) _
+    As Object
+'v5.00 2017-11-14 09:45 - added bEnableEvents parameter, bugfix in LeaveOpenWhenDone
+'v4.08 2013-11-06 13:26
+'simply runs Excel and opens WB  [then runs macro] --> will run XLmacro when opened, if optional macro name specified
+'WB should normally have macros that run on Workbook.Open
+'LeaveOpenWhenDone will NOT auto-close the file or Excel afterwards, usually handle this in the parent sub by  Set xlApp = run_Excel()
+'v3.16 uses xlSharePoint, such files are ALWAYS opened Read-Only to allow automation and bypass message boxes
+'otherwise use IsShiftKeyDown=True and Application.Wait to allow users to bypass any autoroutines
+
+If RunNative = False Then Set XLapp = Nothing  'v4.04
+
+On Error GoTo ErrorHandler  'leaves XLapp <> Nothing on error
+
+If XLpth <> "" Then XLpth = mao_fix_path(XLpth)  'v3.13
+
+Dim wb As Object  'Excel.Workbook  v3.15
+Set run_Excel = XLlaunch(LeaveOpenWhenDone, RunNative) 'v4.03
+
+With run_Excel
+    .Visible = bForceVisibility  'v4.07
+    .EnableEvents = bEnableEvents  'v5.00
+    .DisplayAlerts = False
+    If XLmacro <> vbNullString Then
+    'open WB, run macro
+        Set wb = .Workbooks.Open(XLpth & XLfn)
+        .Run XLmacro
+    On Error Resume Next  'prevents errors where ThisWorbook closes automatically
+        If LeaveOpenWhenDone = False Then .Close SaveChanges:=True
+    On Error GoTo 0
+    Else
+    'macro(s) will autorun on Workbook.Open
+        .Workbooks.Open FileName:=XLpth & XLfn, ReadOnly:=rxlOpenReadOnly
+    On Error Resume Next  'prevents errors where ThisWorbook closes automatically
+        If LeaveOpenWhenDone = False Then .ActiveWorkbook.Close SaveChanges:=True
+    On Error GoTo 0
+    End If
+    .DisplayAlerts = False
+    On Error Resume Next  'prevents errors where Excel closes automatically
+        If LeaveOpenWhenDone = False Then
+            .Quit
+            Set run_Excel = Nothing
+        Else
+            .Visible = True
+        End If
+    On Error GoTo 0
+End With
+Exit Function 'v4.08
+
+ErrorHandler:
+On Error Resume Next  'v4.08
+run_Excel.Visible = True  'v4.07
+Set XLapp = run_Excel
+
+End Function
+
+Function XLlaunch(Optional ByVal bForceVisibility As Boolean = maoVisibleByDefault _
+    , Optional RunNative As Boolean = False) _
+    As Object
+'v4.07 2013-11-04 14:04
+
+Dim InXL As Boolean
+If InStr(Application.Name, "Excel") > 0 Then InXL = True 'v3.12
+
+If RunNative = True And InXL = True Then
+    Set XLlaunch = Application
+Else
+    Set XLlaunch = CreateObject("Excel.Application")
+    XLlaunch.Visible = bForceVisibility
+End If
+
+End Function
+
+Function mao_fix_path(ByVal pth As String) As String
+'v4.06 2013-10-31 11:32
+'adds the relevant last slash to the path, if missing, and if not including .accdb/.mdb/.xl
+
+Const cBsl As String = "\"
+Const cFsl As String = "/"
+
+If InStr(pth, ".xl") > 0 Or InStr(pth, ".accdb") > 0 Or InStr(pth, ".mdb") > 0 Then
+    mao_fix_path = pth
+ElseIf InStr(pth, cBsl) > 0 And Right(pth, 1) <> cBsl Then
+    mao_fix_path = pth & cBsl
+ElseIf InStr(pth, cFsl) > 0 And Right(pth, 1) <> cFsl Then
+    mao_fix_path = pth & cFsl
+Else
+    mao_fix_path = pth
+End If
+
+End Function
+
+
+
+'Sub runOutlook_SendMail(sSubject As String, sRecipient As String _
+'    , sBodyText As String, DisplayFirst As Boolean _
+'    , Optional sAttach_pthfn1 As String _
+'    , Optional sAttach_pthfn2 As String)
+'retired v4.01 2013-08-21 16:27
+'
+'legacy code:
+'modEmail.SendEmail sRecipient, "", "", sSubject, sBodyText, DisplayFirst, sAttach_pthfn1
+'
+''v3.15 2013-07-10 12:25
+''*** DOESN'T WORK IN OFFICE 2003? *** tested OK in 2010
+'' - haven't bypassed Outlook virus protection so will ask for permission?
+'' - can only attach max 2 files, need to change this to allow more
+'
+''Syntax:
+''  SendMail "My email with attachment", "name@host.com", "Here is an email", False, "c:\test.txt"
+''source: http://www.vbaexpress.com/kb/getarticle.php?kb_id=758
+'
+'    Dim olMail As Object  'Outlook.MailItem
+'    Dim blRunning As Boolean
+'
+'     'get application
+'    blRunning = True
+'    On Error Resume Next
+'    Set OLapp = GetObject(, "Outlook.Application")
+'    If OLapp Is Nothing Then
+'        Set OLapp = CreateObject("Outlook.Application")
+'        blRunning = False
+'    End If
+'    On Error GoTo 0
+'
+'    Set olMail = OLapp.CreateItem(0)  '0=olMailItem, see http://www.ozgrid.com/forum/showthread.php?t=148735
+'    With olMail
+'         'Specify the email subject
+'        .Subject = sSubject
+'         'Specify who it should be sent to
+'         'Repeat this line to add further recipients
+'        .Recipients.Add sRecipient
+'         'specify the file to attach
+'         'repeat this line to add further attachments
+'        If sAttach_pthfn1 <> vbNullString Then
+'            .Attachments.Add sAttach_pthfn1
+'            If sAttach_pthfn2 <> vbNullString Then
+'                .Attachments.Add sAttach_pthfn2
+'            End If
+'        End If
+'         'specify the text to appear in the email
+'        .Body = sBodyText
+'         'Choose which of the following 2 lines to have commented out
+'        If DisplayFirst = True Then
+'            .Display 'This will display the message for you to check and send yourself
+'        Else
+'            .Send ' This will send the message straight away
+'        End If
+'    End With
+'
+'    If Not blRunning Then OLapp.Quit
+'
+'    Set OLapp = Nothing
+'    Set olMail = Nothing
+'
+'End Sub

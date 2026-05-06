@@ -1,0 +1,37 @@
+Attribute VB_Name = "modExtra"
+Option Explicit
+Option Compare Text
+
+Sub do_extras()
+'add your custom code here to be run during auto_publish routine
+'this module requires modAuto v3.19 or later
+
+'Call some_other_subroutine
+
+End Sub
+
+Sub do_extras_first()
+'add your custom code here to be run during TW_Open routine
+'this Sub requires modAuto v4.31 or later
+
+'Call some_other_subroutine
+
+End Sub
+
+Sub do_after_publish()
+'add your custom code here to be run AFTER publish routine
+'this module requires modAuto v4.32 or later
+
+'Call some_other_subroutine
+
+End Sub
+
+Sub do_extras_for_output_file()
+'add your custom code here to be run FROM OUTPUT FILE
+'this module requires modAuto v4.33 or later
+
+'Call some_other_subroutine
+
+End Sub
+
+

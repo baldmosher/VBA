@@ -1,0 +1,1850 @@
+Attribute VB_Name = "modAuto"
+Option Explicit
+Option Compare Text
+
+'You will need:
+' - MACROS & admin sheets from Generic Sheets for Automation
+' - ThisWorkbook module code (find it commented at bottom of this module)
+' - modAuto (this module)
+' - modEmail            min v13.12
+' - modFile             min v6.00
+' - xlAudit             min v2.06
+' - xlBackgroundRefresh min v8.00
+' - xlPivots            min v7.18
+' - xlUtils             min v37.02
+
+'NB: using email *groups* doesn't work unless they can accept from external emails
+Private Const sEmailVM As String = "pcinsightvm@company.com"
+Private Const sEmailTeam As String = "recipient@company.com"
+Private Const sAutomationUser As String = "pcinsightvm|pcopsvm"
+
+Private Const iMaxExcelSessions As Integer = 30 'prevents VM getting clogged up with reports when something gets stuck
+Private Const cUpdateBlockHeaderRowColorIndex As Integer = 44  'orange
+Private Const iSecondsToWaitForPP As Integer = 30  'seconds to wait for PP calcs to complete until trying to publish again
+Public tStart As Double, tTotal As Double
+Private bLoop As Boolean
+Public bExtraProcess As Boolean
+Public dOnTimeRecheckPublish As Double
+Private tToQuit As Double
+Private dUpdateStarted As Double, dUpdateFinished As Double, dPublishStarted As Double, dPublishFinished As Double
+
+Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As Long)
+
+Public Const modAutoCodeVer As String = _
+"modAuto v7.00"
+'v7.00 2020-10-23 08:45 - merged forked modFile and modFile_FSO modules
+'v6.37 2020-10-23 08:37 - admin_Rearrange_Sheets: error handler allows for missing admin sheets
+'v6.36 2020-10-22 16:15 - admin_ReplaceMaster: removed hard-coded admin_Validation (sheet now optional)
+'v6.35 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v6.34 2019-10-23 16:05 - amended email addresses for emails
+'v6.33 2019-09-20 17:04 - auto_Publish: bugfix, sTempFile was incorrect
+'v6.32 2019-09-20 16:46 - TW_Open: changes file access to read-only for output files
+'v6.31 2019-05-16 14:41 - auto_Publish: bugfix, trying to double-check output file is read-only
+'v6.30 2019-03-22 09:34 - admin_Rearrange_Sheets: tries to move pivValidate pivots, needs more work & testing
+'v6.29 2019-03-22 09:24 - admin_Rearrange_Sheets: only smax = 6 admin sheets, deletes Access Control sheet if exists
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v6.27 2019-03-22 08:46 - auto_Publish: bugfix, changed temp output to Windows temp folder
+'v6.26 2019-01-21 09:13 - auto_Publish: bugfix, can't delete read-only files
+'v6.25 2019-01-14 18:26 - fn_DataCheckResult_HTML: moved val_Today and val_ThisMonday to admin_Validation
+'v6.24 2018-06-01 13:21 - auto_Publish: bypasses output step if it's specified as a folder
+'v6.23 2018-05-21 10:53 - fn_DataCheckResult_HTML: sends error if HTML boxout fails
+'v6.22 2018-05-21 09:44 - auto_Publish: records HTML blurbs As String prior to sending the email
+'v6.21 2018-04-23 15:31 - TW_BeforeSave: removed the last step, the experiment doesn't work
+'v6.20 2018-04-23 15:03 - auto_Publish: changed file variable names for clarity/consistency
+'v6.19 2018-04-23 09:52 - zSleepTime: changed variable name to pthfntest, attempted bugfix
+'v6.18 2018-03-27 15:02 - Check_Access_Control: improved check process, only refreshes for admin users
+'v6.17 2018-01-24 16:18 - TW_Open: errorhandler (blunt) around MACROS veryhidden
+'v6.16 2017-12-06 18:26 - auto_Update/auto_Publish: added schedule logging
+'v6.15 2017-12-06 17:41 - Check_Access_Control: changed from Private function
+'v6.14 2017-12-04 09:38 - added some block annotations, no change to code
+'v6.13 2017-10-11 10:07 - saves temporary output file before copying to correct output location - provides a secondary backup and prevents users locking file accidentally
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v6.11 2017-09-05 09:50 - admin_Rearrange_Sheets: bugfix for reports with charts
+'v6.10 2017-08-23 15:37 - admin_Rearrange_Sheets: first version
+'v6.09 2017-08-18 09:53 - auto_Publish: after failure when publishing output file, now saves the master then quits
+'v6.08 2017-08-04 11:41 - SaveNewTestVersion: bugfix from v6.07 where no test version found
+'v6.07 2017-08-04 09:51 - SaveNewTestVersion: bugfix for e.g. " vs " or " V*" in filenames
+'v6.06 2017-08-04 08:41 - fn_DataCheckResult_HTML: resizes column 3 to fit validation explanation
+'v6.05 2017-08-03 14:42 - SaveNewTestVersion: bugfix for test version not found
+'v6.04 2017-08-02 16:04 - SaveNewTestVersion: bugfix in EnableEvents logic
+'v6.03 2017-08-02 15:52 - SaveNewTestVersion: minor tweak to prevent duplicate versions in Changelog
+'                       - TW_BeforeSave: tweak to message box to add EXPERIMENTAL FEATURE warning
+'v6.02 2017-08-02 15:08 - asks to auto-increment when saving test version
+'v6.01 2017-08-02 14:54 - SaveNewTestVersion: code layout, changed to Environ("Username"), lets you use a button to do this
+'v6.00 2017-08-01 17:19 - added SaveNewTestVersion
+'v5.33 2017-07-31 11:47 - ScreenUpdating efficiency improvements
+'v5.32 2017-07-31 10:43 - bugfix for Generic Sheets file, changed order
+'v5.31 2017-07-27 16:55 - skips close routine when user is not admin
+'v5.30 2017-07-27 16:45 - very hides all sheets before saving (security measure)
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'v5.28 2017-07-11 12:41 - added exception for ErrorCannotSaveToPath
+'v5.27 2017-07-06 12:48 - fn_DataCheckResult_HTML: includes red text next to result cell
+'v5.26 2017-07-06 10:37 - admin_Clean_Sheet: removes Placeholder row from Update Log
+'v5.25 2017-07-06 09:27 - fn_DataCheck: defaults to True, no longer Private, tidied up Calculation code, deletes duff "chk_" range names
+'                       - fn_DataCheckResult_HTML: ignores duff "chk_" range names
+'v5.24 2017-07-04 10:06 - auto_Wait_For_PP_Then_Publish: minor tweak to process
+'                       - reverted to xlU_SafeToQuitExcel
+'v5.23 2017-07-04 09:17 - added time since last calc, needs xlPivots v7.16
+'v5.22 2017-07-03 16:19 - no longer calculates before saving master file, prevents endless loop
+'v5.21 2017-07-03 14:37 - removes modAutoVer row
+'v5.20 2017-07-03 14:08 - removed email message, unnecessary, gives false results
+'v5.19 2017-07-03 13:12 - changed calc back to SemiAutomatic (stops Excel hanging?)
+'v5.18 2017-07-02 17:01 - bugfix in update/publish routine, set max time before dumping out
+'v5.17 2017-06-29 16:22 - auto_Wait_For_PP_Then_Publish: changed to Private Const iSecondsToWaitForPP = 30, 10sec may be too hasty
+'v5.16 2017-06-29 10:08 - auto_Update: no longer quits Excel until it's good and ready, works with xlBackgroundRefresh v4
+'                       - auto_Wait_For_PP_Then_Publish: StatusBar message improved to clarify progress, code annotations improved
+'v5.15 2017-06-28 18:06 - bugfix to help prevent rerunning of OnTime event
+'v5.14 2017-06-28 17:04 - admin_Clean_Sheet: removes old rows for "add link to SQL file"
+'v5.13 2017-06-28 15:40 - bugfix in update/publish routine after checking PP
+'v5.12 2017-06-28 15:38 - added admin_Clean_Sheet to process various layout checks before save
+'v5.11 2017-06-27 17:19 - bugfix in update/publish routine from v5.10 around logging and PP holdups
+'v5.10 2017-06-26 16:19 - added auto_Wait_For_PP_Then_Publish
+'v5.09 2017-06-26 13:18 - fn_DataCheck: calculates cell before continuing, may fix calc errors
+'v5.08 2017-06-26 08:43 - added reason codes for xlBackgroundRefresh
+'v5.07 2017-06-22 13:53 - minor change to module versions at top of module
+'v5.06 2017-06-08 15:56 - added ReportVersion function
+'v5.05 2017-06-07 14:46 - auto_Publish: improved dropout message when manually creating output file
+'                       - auto_Publish: improved update logging
+'                       - fn_Updates_Block: disabled events during function
+'v5.04 2017-05-30 12:30 - added fn_IsPP to xlBackgroundRefresh
+'v5.03 2017-05-26 08:57 - added Application.DisplayAlerts = False to prevent disk space errors halting process
+'v5.02 2017-05-25 08:52 - added Remove_OLD_Modules, currently adhoc pending testing of suitable timing during update process
+'v5.01 2017-05-23 15:40 - email messages clarified
+'v5.00 2017-05-15 09:55 - explicit references to xlUtils to simplify crossover
+'v4.58 2017-05-12 10:19 - extra close routine exception for Generic Sheets for Automation
+'v4.57 2017-05-11 13:43 - added module prefix to xlModule.xlModuleCodeVer to prevent debug errors if xlModule_OLD is still present
+'v4.56 2017-05-08 13:05 - update log table now logs against "username|computername" and widened column to fit
+'v4.55 2017-05-08 13:02 - added catch-all quit routine, prevents sending incorrect iMaxExcelSessions warning email
+'v4.54 2017-05-08 10:26 - explicit references to modAuto.xlU_ functions to clarify code
+'v4.53 2017-05-05 10:00 - bugfix from v4.52, copied xlU_IsExcelRunning from xlUtils, increased iMaxExcelSessions
+'v4.52 2017-05-04 17:03 - added iMaxExcelSessions, drops out on VM if max is exceeded
+'v4.51 2017-05-04 09:39 - added start time and report name to StatusBar message
+'v4.50 2017-04-10 13:25 - added Application.CalculateBeforeSave = True during publish
+'v4.49 2017-03-13 11:45 - added zSleepTime function and Sleep delay after Kill to prevent shared drive access delays
+'v4.48 2017-03-08 15:58 - updates output, testing, master path headers automatically
+'v4.47 2017-02-28 12:00 - changed ws to Object to handle Charts
+'v4.46 2017-02-23 14:42 - moved TXT_Audit into xlAudit module, commented code
+'v4.45 2017-02-23 09:34 - TXT_Audit bugfix, workbook name instead of full path
+'v4.44 2017-02-23 08:58 - TXT_Audit bugfix, extra column for report path and renamed constant for block colour to cUpdateBlockHeaderRowColorIndex
+'v4.43 2017-02-22 17:56 - added TXT_Audit and TXT_Audit_Write_FSO
+'v4.42 2017-02-20 15:58 - added new blocks to failure emails
+'v4.41 2017-02-20 15:26 - changed t to tTotal, minor changes to set formatting on Update Log block
+'v4.40 2017-02-07 13:12 - fn_UpdateResult_HTML: first release version (adapted from fn_DataCheckResult_HTML), minor changes to email formatting
+'v4.39 2017-02-07 09:59 - moved admin_ReplaceMaster from admin sheet
+'v4.38 2017-02-07 09:27 - added fn_DataCheckResult_HTML and code versions to emails, renamed auto_Ready to fn_DataCheck
+'v4.37 2017-02-02 14:33 - records Testing folder automatically on admin sheet
+'v4.36 2017-01-25 10:00 - message improvement
+'v4.35 2017-01-23 07:14 - message improvement
+'v4.34 2017-01-16 10:14 - bugfix, references admin.Range expicitly
+'v4.33 2016-12-08 16:28 - added *optional* extra routine for modExtra.do_extras_for_output_file
+'v4.32 2016-12-08 16:19 - added *optional* extra routine for modExtra.do_after_publish
+'v4.31 2016-12-06 11:11 - added *optional* extra routine for modExtra.do_extras_first
+'v4.30 2016-11-29 13:21 - calculations manual, performance gains, PP reports should use xlPivots.PP_Calcs_Finished
+'v4.29 2016-11-25 14:11 - bugfix, resets bLoop when cancelling close routine
+'v4.28 2016-10-07 16:01 - makes Excel visible
+'v4.27 2016-10-05 16:37 - exception for Ad-Hoc Tests folder
+'v4.26 2016-09-15 11:38 - tweaks to error messages
+'v4.25 2016-09-08 12:25 - added auto-calculate for PP reports
+'v4.24 2016-09-06 11:27 - tweaks to error messages
+'v4.23 2016-08-30 11:48 - code tweak, no longer requires pivValidate sheet
+'v4.22 2016-08-30 09:50 - requires xlPivots
+'v4.21 2016-08-26 09:01 - auto_Ready now runs the date fiters sub
+'v4.20 2016-07-20 11:34 - sends email if date filters can't be applied
+'v4.19 2016-07-19 13:33 - auto_Update sets bUsingQueryTables automatically
+'v4.18 2016-07-05 10:18 - move MACROS sheet to start
+'v4.17 2016-06-30 16:52 - commented .UpdateLinks (.UpdateLink) code below, use modExtra if this command is needed
+'v4.16 2016-06-30 16:50 - protects MACROS sheet, just in case
+'v4.15 2016-06-28 13:50 - better automatic control of admin.DoDebug
+'v4.14 2016-06-27 14:41 - tweak to prevent loops after saving except as Test
+'v4.13 2016-06-27 14:00 - works with bRecordResults
+'v4.12 2016-06-27 11:48 - bExtraProcess: improvement in auto_Publish process
+'v4.11 2016-06-24 14:31 - improvement in close process
+'v4.10 2016-06-23 13:36 - tweak to fix when publishing from test
+'v4.09 2016-06-20 11:09 - added TW_Before/AfterSave
+'v4.08 2016-06-14 16:11 - bugfix: prevents closing without saving
+'v4.07 2016-06-07 17:08 - optionally doesn't try to quit, useful for looping (e.g. KPI Report)
+'v4.06 2016-05-17 09:30 - changed timestamp to 15 seconds
+'                       - added error handler to v4.05
+'v4.05 2016-05-13 11:12 - updates links to external workbooks
+'v4.04 2016-05-10 09:39 - bugfix: prevents double-asking to replace live report
+'v4.03 2016-05-09 10:01 - make the first *visible* sheet active
+'v4.02 2016-05-05 17:01 - bugfix for Generic Sheets file only
+'v4.01 2016-05-05 11:43 - bugfix: admin_modAutoVer is causing issues, commented
+'v4.00 2016-05-04 16:24 - macros moved from ThisWorkbook module
+'v3.19 2016-05-04 16:21 - added modExtra command, allows us to run extra code (always specific to this WB)
+'v3.18 2016-04-13 17:36 - added modAutoCodeVer function to collect version number from module
+'v3.17 2016-04-06 15:00 - ThisWorkbook.redo_open called from button on MACROS sheet
+'v3.16 2016-04-06 09:01 - records modAutoVer on admin sheet
+'v3.15 2016-04-05 10:02 - ThisWorkbook updated, selects INSTRUCTIONS sheet in Generic file only
+'v3.14 2016-03-21 08:56 - hides ALL sheets prior to publish
+'v3.13 2016-03-01 15:02 - bugfix in save when fileserver/local machine timestamps are slightly wrong
+'v3.12 2016-02-29 08:36 - bugfix in Y: warning for master, improved xlQuit routine
+'v3.11 2016-02-25 11:33 - improved update logging, can handle empty log list
+'v3.10 2016-02-26 08:36 - fixed routine to offer to publish live report from master
+'v3.09 2016-02-24 11:19 - error handler if output file is not actually saved
+'v3.08 2016-02-24 10:46 - fixed ThisWorkbook routine to update Master file automatically
+'v3.07 2016-01-08 12:10 - minor improvement to code
+'v3.06 2016-02-02 11:21 - bugfix, no longer just Ends on error
+'v3.05 2015-12-30 12:26 - forces presence of admin_Validation sheet to enforce update
+'v3.04 2015-12-30 09:10 - improved failure handling messages
+'v3.03 2015-12-23 14:31 - admin sheet module refers modAutoCodeVer
+'v3.02 2015-12-23 14:23 - added code version to Success email
+'v3.01 2015-12-23 14:10 - minor improvement to ThisWorkbook code
+'v3.00 2015-12-22 10:01 - automation improvements for VM, doesn't halt on any errors
+'v2.07 2015-11-04 09:57 - added note for xlPivots
+'v2.06 2015-11-04 08:38 - improved code for ThisWorkbook module (commented at bottom of this module)
+'v2.05 2015-11-02 11:41 - bugfix for pivot charts
+'v2.04 2015-10-23 09:41 - bugfix preventing Excel quitting
+'v2.03 2015-10-22 16:51 - added bUsingQueryTables
+'v2.02 2015-10-22 12:09 - bugfixes, hides sheet tab colorindex 44
+'v2.01 2015-10-12 15:45 - bugfixes to v2.00
+'v2.00 2015-10-09 10:46 - updates PivotCaches together using BackgroundQuery = True
+'v1.02 2015-09-21 12:27 - tweaks to process, added MACROS sheet
+'v1.01 2015-09-18 17:44 - tweaks to process
+'v1.00 2015-09-18 - first release version
+
+Function modAutoVer() As String
+modAutoVer = modAutoCodeVer
+End Function
+
+Sub auto_Update()
+'sets the full update process going
+'v6.16 2017-12-06 18:26 - added TXT_Schedule logging
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'v5.16 2017-06-29 09:57 - no longer quits Excel until it's good and ready, works with xlBackgroundRefresh v4
+'v5.13 2017-06-28 15:40 - bugfix in update/publish routine after checking PP
+'v5.11 2017-06-27 16:03 - bugfix in update/publish routine from v5.10 around logging
+'v5.10 2017-06-26 16:19 - added auto_Wait_For_PP_Then_Publish
+'v5.08 2017-06-26 08:43 - added reason codes for xlBackgroundRefresh
+'v4.55 2017-05-08 13:02 - added catch-all quit routine, prevents sending incorrect iMaxExcelSessions warning email
+'v4.54 2017-05-08 10:26 - explicit references to modAuto.xlU_ functions to clarify code
+'v4.52 2017-05-04 17:03 - added iMaxExcelSessions, drops out on VM if max is exceeded
+'v4.51 2017-05-04 09:39 - added start time and report name to StatusBar message
+'v4.47 2017-02-28 12:00 - changed ws to Object to handle Charts
+'v4.42 2017-02-20 15:58 - added new blocks to failure emails
+'v4.41 2017-02-20 15:05 - changed t to tTotal
+'v4.40 2017-02-07 13:03 - minor changes to email formatting
+'v4.38 2017-02-07 09:27 - added code versions to emails
+'v4.28 2016-10-07 16:01 - makes Excel visible
+'v4.26 2016-09-15 11:38 - tweaks to error messages
+'v4.19 2016-07-19 13:33 - sets bUsingQueryTables automatically
+'v4.17 2016-06-30 16:52 - commented .UpdateLinks (.UpdateLink) code below, use modExtra if this command is needed
+'v4.13 2016-06-27 14:00 - works with bRecordResults
+'v4.06 2016-05-17 09:30 - added error handler to v4.05
+'v4.05 2016-05-13 11:12 - updates links to external workbooks
+'v4.03 2016-05-09 10:01 - make the first *visible* sheet active
+'v4.01 2016-05-05 11:43 - bugfix: admin_modAutoVer is causing issues, commented
+'v3.19 2016-05-04 16:21 - added modExtra command, allows us to run extra code (specific to this WB)
+'v3.16 2016-04-06 09:01 - records modAutoVer on admin sheet
+'v3.05 2015-12-30 12:26 - forces presence of admin_Validation sheet to enforce update
+'v3.00 2015-12-22 10:01 - automation improvements for VM, doesn't halt on any errors
+'v2.03 2015-10-22 16:51 - added bUsingQueryTables
+'v2.01 2015-10-12 15:45 - bugfixes to v2.00
+'v2.00 2015-10-09 10:46 - updates PivotCaches together using BackgroundQuery = True
+'v1.00 2015-09-18 - first release version
+
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'If modAuto.Check_Access_Control = 0 Then
+'    MsgBox "Not allowed - contact P&C Insight", vbCritical, ""
+'    Exit Sub
+'End If
+
+'reset start/finish time
+dUpdateStarted = 0
+dUpdateFinished = 0
+
+'log start time
+dUpdateStarted = Now
+
+If xlUtils.xlU_IsExcelRunning > iMaxExcelSessions Then GoTo ErrorMaxExcelSessions
+
+Application.DisplayAlerts = False
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+
+'start module timer (used later)
+tStart = Now
+Dim rLogHere As Range
+'find first empty cell for logging this update
+Set rLogHere = fn_Updates_Block     'create/reformat block and set rLogHere to first header cell
+If rLogHere.Offset(1) = "" Then
+    Set rLogHere = rLogHere.Offset(1)
+Else
+    Set rLogHere = rLogHere.End(xlDown)
+'has this process been run once and cancelled?
+    If rLogHere.Offset(0, 1) <> "" Then
+    'no, so start a new log row
+        Set rLogHere = rLogHere.Offset(1)
+        rLogHere.NumberFormat = "yyyy-mm-dd hh:mm"
+    Else
+    'yes, so override this cell with new tStart
+    End If
+End If
+Application.EnableEvents = False
+    rLogHere = tStart
+Application.EnableEvents = bAEE
+
+If Application.Visible = False Then Application.Visible = True
+Application.StatusBar = "Auto-updating " & ThisWorkbook.Name & "... started " & Now
+
+'record modAuto version number on admin sheet
+'admin sheet MUST have this range, see Generic Sheets file for details
+'--> commented out until we can find a way to fix it
+'admin.Range("admin_modAutoVer") = modAutoCodeVer
+
+'update Data Connections, and notify P&C Insight team about data refresh at this point only if it fails to update
+Dim sxlbError As String
+If Background_Refresh_And_Wait(, True) = False Then
+'add reason text here and numerate in xlBackgroundRefresh code
+    If xlBackgroundRefresh.xlB_UpdateFailed = 1 Then
+        sxlbError = "Looks like the PowerPivot data model didn't intialise or reload correctly."
+    Else
+        sxlbError = "Looks like the data connections didn't all update correctly."
+    End If
+    modEmail.SendEmail Email_Recipient:=sAutoEmailTO, Email_RecipientCC:=sAutoEmailCC _
+        , Email_Subject:="Update failed: " & ThisWorkbook.Name _
+        , Email_BodyText:="<p>" & sxlbError & "  Report not published.  Check the master file (link below), update data again if necessary, otherwise if it's OK, just publish it." _
+            & "<p>" & "<a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+            & "<p>" & fn_DataCheckResult_HTML _
+            & "<p>" & fn_UpdateResult_HTML _
+            & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+            , DisplayMsg:=False, Email_AsHTML:=True
+End If
+
+'removed this code, causing issues with some workbooks
+'use modExtra for this, if it's required
+''update any links
+'On Error Resume Next
+'ThisWorkbook.UpdateLink Name:=ThisWorkbook.LinkSources
+'On Error GoTo 0
+
+'update validation ranges on Validation sheet (where applicable)
+'Debug,Compile error here => no admin_Validation sheet in this file, copy it from Generic Sheets for Automation file
+'Call admin_Validation.Readjust_Validation_Ranges(Nothing)
+
+'optional: additional code to be run after update and before publish, requires modExtra
+Call modExtra.do_extras
+
+'make the first *visible* sheet active
+Dim x As Byte, ws As Object 'needs to be an object to be able to hide Chart Sheets
+With ThisWorkbook
+    For x = 1 To .Sheets.Count
+        Set ws = .Sheets(x)
+        If ws.Visible = xlSheetVisible Then ws.Activate   'only activates if sheet is visible
+        If ws.Name = ActiveSheet.Name Then Exit For
+    Next x
+End With
+
+'log finish time
+dUpdateFinished = Now
+
+If fn_IsPP Then
+'wait until PowerPivot has finished calculating before publishing report
+    Call auto_Wait_For_PP_Then_Publish  'this calls the auto_Publish routine
+Else
+'publish updated report and send confirmation
+    Call auto_Publish(True)        'this Quits Excel if it can, or closes WB
+End If
+
+'catch-all, this should not be invoked except during error, Excel should already have quit by this point
+'ThisWorkbook.Save
+'ThisWorkbook.Saved = True
+'Application.Quit
+Exit Sub
+
+ErrorMaxExcelSessions:
+    Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+    modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+        , "Update failed: " & ThisWorkbook.Name _
+        , "More than " & iMaxExcelSessions & " Excel sessions open on VM.  Try again later." _
+            & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+            & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+            , False, , , , , True
+    On Error Resume Next
+    Application.StatusBar = "ErrorMaxExcelSessions"
+    ThisWorkbook.Saved = True
+    Application.Quit
+End Sub
+
+Sub auto_Wait_For_PP_Then_Publish()
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'v5.24 2017-07-04 10:06 - minor tweak to process
+'v5.23 2017-07-04 09:17 - added time since last calc, needs xlPivots v7.16
+'v5.17 2017-06-29 16:22 - changed to 30s, 10s may be too hasty
+'v5.16 2017-06-29 10:08 - StatusBar message improved to clarify progress, code annotations improved
+'v5.15 2017-06-28 18:06 - bugfix to help prevent rerunning of OnTime event
+'v5.13 2017-06-28 15:40 - bugfix in update/publish routine after checking PP
+'v5.11 2017-06-27 16:03 - bugfixes in update/publish routine from v5.10 around PP holdups
+'v5.10 2017-06-26 16:19 - added auto_Wait_For_PP_Then_Publish
+'this will check for PP calcs to be completed, and trigger itself after a set time before eventually publishing
+
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'If modAuto.Check_Access_Control = 0 Then
+'    MsgBox "Not allowed - contact P&C Insight", vbCritical, ""
+'    Exit Sub
+'End If
+
+On Error Resume Next
+Application.StatusBar = False   'cancels messages
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+Application.Calculation = xlCalculationSemiautomatic
+Dim rOnTime As Range
+Set rOnTime = admin.Range("admin_OnTime")
+If rOnTime Is Nothing Then
+'create it first time, relative to admin_UpdatedTime header cell
+    ThisWorkbook.Names.Add "admin_OnTime", admin.Range("admin_UpdatedTime").Offset(-1)
+    Set rOnTime = admin.Range("admin_OnTime")
+    rOnTime.NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    Application.EnableEvents = bAEE
+End If
+
+'cancel any existing OnTime event
+If dOnTimeRecheckPublish = 0 Then dOnTimeRecheckPublish = rOnTime.Value   'hard-coded value
+If dOnTimeRecheckPublish <> 0 Then Application.OnTime dOnTimeRecheckPublish, "auto_Wait_For_PP_Then_Publish", , False
+
+'wait a few seconds since last calculation before publishing (note: 86400 is seconds in a day)
+Dim rPPcalc As Range, bCalcTimeOK As Boolean
+Set rPPcalc = ThisWorkbook.Sheets("admin").Range("admin_PPcalc")
+If rPPcalc Is Nothing Then
+    bCalcTimeOK = True
+Else
+    bCalcTimeOK = (Now - rPPcalc - (iSecondsToWaitForPP / 86400)) > 0
+End If
+
+'decide whether to start a new OnTime event or just publish the report
+If bCalcTimeOK = True And xlPivots.PP_Check_Calculations_Completed Then
+
+'publish the report
+    Application.StatusBar = False   'cancels messages
+    dOnTimeRecheckPublish = 0       'resets timer to 0
+    rOnTime = ""                    'clears hard-coded timer
+    Application.EnableEvents = bAEE 'resets Events
+    Call auto_Publish(True)         'publish & close
+    Application.StatusBar = "ERROR in auto_Wait_For_PP_Then_Publish: didn't quit during auto_Publish routine"
+    Exit Sub                        'this shouldn't happen
+
+Else
+'need to wait a few seconds then try again
+    dOnTimeRecheckPublish = Now + TimeSerial(0, 0, iSecondsToWaitForPP)
+    rOnTime = dOnTimeRecheckPublish     'adds hard-coded timer
+    Application.StatusBar = "PAUSE IN AUTOMATION: will try to rerun PP calc check at " & Format(dOnTimeRecheckPublish, "yyyy-mm-dd hh:nn:ss")
+    Application.OnTime dOnTimeRecheckPublish, "auto_Wait_For_PP_Then_Publish"
+    Application.EnableEvents = bAEE
+End If
+
+End Sub
+
+Sub auto_Publish(Optional ByVal BypassMsgBox As Boolean _
+    , Optional DropOutBeforeQuit As Boolean)
+'v6.33 2019-09-20 17:04 - auto_Publish: bugfix, sTempFile was incorrect
+'v6.31 2019-05-16 14:41 - auto_Publish: bugfix, trying to double-check output file is read-only
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v6.27 2019-03-22 08:46 - auto_Publish: bugfix, changed temp output to Windows temp folder
+'v6.26 2019-01-21 09:13 - auto_Publish: bugfix, can't delete read-only files
+'v6.24 2018-06-01 13:21 - auto_Publish: bypasses output step if it's specified as a folder
+'v6.22 2018-05-21 09:44 - auto_Publish: records HTML blurbs As String prior to sending the email
+'v6.20 2018-04-23 15:03 - auto_Publish: changed file variable names for clarity/consistency
+'v6.16 2017-12-06 18:26 - added TXT_Schedule logging
+'v6.14 2017-12-04 09:38 - added some block annotations, no change to code
+'v6.13 2017-10-11 10:07 - saves temporary output file before copying to correct output location - provides a secondary backup and prevents users locking file accidentally
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v6.09 2017-08-18 09:53 - after failure when publishing output file, now saves the master then quits
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'v5.28 2017-07-11 12:41 - added exception for ErrorCannotSaveToPath
+'v5.24 2017-07-04 09:53 - reverted to xlU_SafeToQuitExcel
+'v5.22 2017-07-03 16:19 - no longer calculates before saving master file, prevents endless loop
+'v5.18 2017-07-02 17:25 - bugfix in update/publish routine, set max time before dumping out
+'v5.13 2017-06-28 15:40 - bugfix in update/publish routine after checking PP
+'v5.11 2017-06-27 16:03 - bugfix in update/publish routine from v5.10 around logging
+'v5.05 2017-06-07 14:46 - auto_Publish: improved dropout message when manually creating output file
+'                       - improved update logging
+'v5.03 2017-05-26 08:57 - added Application.DisplayAlerts = False to prevent disk space errors halting process
+'v5.01 2017-05-23 15:40 - email messages clarified
+'v5.00 2017-05-15 09:55 - explicit references to xlUtils to simplify crossover
+'v4.56 2017-05-08 13:05 - update log table now logs against "username|computername"
+'v4.54 2017-05-08 10:26 - explicit references to modAuto.xlU_ functions to clarify code
+'v4.52 2017-05-04 17:03 - bugfix in error message, missing subject
+'v4.50 2017-04-10 13:25 - added Application.CalculateBeforeSave = True
+'v4.49 2017-03-13 09:45 - added Sleep delay after Kill to prevent shared drive access delays
+'v4.48 2017-03-08 15:58 - updates output path header automatically
+'v4.47 2017-02-28 12:00 - changed ws to Object to handle Charts
+'v4.42 2017-02-20 15:58 - added new blocks to failure emails
+'v4.41 2017-02-20 15:05 - minor changes to Update Log block formatting and bugfix for tTotal=0 when publishing manually
+'v4.40 2017-02-07 13:03 - minor changes to email formatting
+'v4.38 2017-02-07 09:27 - added fn_DataCheckResult_HTML and code versions to emails
+'v4.36 2017-01-25 10:00 - message improvement
+'v4.35 2017-01-23 07:14 - message improvement
+'v4.34 2017-01-16 10:14 - bugfix, references admin.Range expicitly
+'v4.32 2016-12-08 16:19 - added modExtra.do_after_publish
+'v4.26 2016-09-15 11:38 - tweaks to error messages
+'v4.24 2016-09-06 11:27 - tweaks to error messages
+'v4.16 2016-06-30 16:50 - protects MACROS sheet, just in case
+'v4.07 2016-06-07 17:08 - DropOutBeforeQuit, optionally doesn't try to quit, useful for looping (e.g. KPI Report)
+'v4.06 2016-05-17 09:30 - changed timestamp to 15 seconds
+'v4.03 2016-05-09 10:01 - amended email subject for read-only master error
+'v3.14 2016-03-21 08:56 - hides ALL sheets prior to publish
+'v3.13 2016-03-01 15:02 - bugfix in save when fileserver/local machine timestamps are slightly wrong
+'v3.12 2016-02-29 09:04 - improved QuitExcel logic
+'v3.11 2016-02-25 11:33 - improved update logging, can handle empty log list
+'v3.09 2016-02-24 11:19 - error handler if output file is not actually saved
+'v3.06 2016-02-02 11:21 - bugfix, no longer just Ends on error
+'v3.04 2015-12-30 09:10 - improved failure handling messages
+'v3.02 2015-12-23 14:23 - added code version to Success email
+'v3.00 2015-12-22 10:01 - automation improvements for VM, doesn't halt on any errors
+'v2.05 2015-11-02 11:41 - bugfix for pivot charts
+'v2.04 2015-10-23 09:41 - bugfix preventing Excel quitting
+'v2.02 2015-10-22 12:09 - bugfixes, hides sheet tab colorindex 44
+'v1.02 2015-09-21 12:27 - tweaks to process, added MACROS sheet, better error handler
+'v1.01 2015-09-18 17:44 - tweaks to process
+'v1.00 2015-09-18 - first release version
+
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'If modAuto.Check_Access_Control = 0 Then
+'    MsgBox "Not allowed - contact P&C Insight", vbCritical, ""
+'    Exit Sub
+'End If
+
+Dim bOpenedReadOnly As Boolean
+If InStr(Application.Caption, "read-only") > 0 Then bOpenedReadOnly = True
+
+'reset start/finish time
+dPublishStarted = 0
+dPublishFinished = 0
+'log start time
+dPublishStarted = Now
+
+'NOTE: module timer is set in auto_Update, and only used for automated updates
+'If tStart = 0 Then tStart = Now
+
+If BypassMsgBox Then Application.DisplayAlerts = False
+Application.CalculateBeforeSave = True
+If Application.CalculationState <> xlDone Then Application.Calculate
+
+
+Dim sDataCheckResult_HTML As String, sUpdateResult_HTML As String  'v6.22
+
+'=============
+'== PUBLISH ==
+'=============
+'record current boxouts for failure notice
+sDataCheckResult_HTML = fn_DataCheckResult_HTML
+sUpdateResult_HTML = fn_UpdateResult_HTML
+
+Dim sOutputFile As String, sTempFile As String
+sOutputFile = admin.Range("admin_OutputFile")
+If Right(sOutputFile, 1) = "\" Then
+'output file is specified as a folder, we don't need to publish the output file
+Else
+    Dim bAEE As Boolean 'speeds up logging process
+    Dim ws As Object 'needs to be an object to be able to hide Chart Sheets
+    'hide all sheets except MACROS sheet
+    admin_MACROS.Visible = xlSheetVisible
+    admin_MACROS.Select
+    On Error Resume Next
+    admin_MACROS.Protect    'just makes sure it's protected, no password needed
+    On Error GoTo 0
+    For Each ws In ThisWorkbook.Sheets
+        If ws.Name <> "MACROS" Then ws.Visible = xlSheetVeryHidden
+    Next ws
+    admin.DoDebug = False   'refers to ActiveX CheckBox control on admin sheet
+    Application.StatusBar = "Replacing old output file...."
+    'delete temporary file
+        sTempFile = Environ("Temp") & "\" & Replace(ThisWorkbook.Name, "(master)", "temporary published file") 'v6.33 v6.27
+        If Dir(sTempFile) <> "" Then
+            On Error GoTo ErrorCannotDelete
+            SetAttr sTempFile, vbNormal
+            Kill sTempFile
+            Sleep zSleepTime(sTempFile)
+            On Error GoTo 0
+        End If
+    'save temporary output file
+        Dim t1 As Double, t2 As Double
+    'adjust Now by 15 seconds back to account for possible small differences in fileserver clock
+        t1 = Now - TimeSerial(0, 0, 15)
+        Debug.Print "Now:   " & Format(t1, "yyyy-mm-dd hh:mm:ss")
+    On Error Resume Next    'publish errors captured in following steps
+        ThisWorkbook.SaveCopyAs sTempFile
+    On Error GoTo 0
+        t2 = modFile.mfGetDateModified(sTempFile)
+    'check it worked
+        If Dir(sTempFile) = "" Or t2 <= t1 Then
+        'didn't save output file, save master file and quit
+            Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+            modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+                , "Error in update: " & ThisWorkbook.Name _
+                , "Report hasn't published.  If you didn't receive any other errors, this is likely to be a network/file access issue.  Check the master file and try to publish manually." _
+                    & "<p>" & "<a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                    & "<p>" & sDataCheckResult_HTML _
+                    & "<p>" & sUpdateResult_HTML _
+                    & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                    , False, , , , , True
+            ThisWorkbook.Save
+            Call xlUtils.xlU_SafeToQuitExcel(True, False)
+        Else
+            Debug.Print "Saved: " & Format(t2, "yyyy-mm-dd hh:mm:ss")
+        End If
+    'just continue with rest of routine regardless of errors
+    'delete output file
+        sOutputFile = admin.Range("admin_OutputFile")
+        admin.Range("admin_OutputFile").Offset(-1) = "OUTPUT FILE"
+        If Dir(sOutputFile) <> "" Then
+        'delete existing output file first
+            On Error GoTo ErrorCannotDelete
+            SetAttr sOutputFile, vbNormal
+            Kill sOutputFile
+            Sleep zSleepTime(sOutputFile)
+            On Error GoTo 0
+        End If
+    'make temporary output file read only *before* moving it >> prevents people opening it writeable in that fraction of a second
+        SetAttr sTempFile, vbReadOnly
+    'copy temporary output file to output folder
+        FileCopy sTempFile, sOutputFile
+    'remove temp file
+        SetAttr sTempFile, vbNormal  'v6.26
+        Kill sTempFile
+        sTempFile = ""
+    'make sure it's been moved
+        If Dir(sOutputFile) = "" Then GoTo ErrorCannotDelete
+    'make output file read only *after* moving it (attempted bugfix)
+    On Error Resume Next
+        SetAttr sOutputFile, vbReadOnly 'v6.31
+    On Error GoTo 0
+End If
+
+'log finish time
+dPublishFinished = Now
+
+'run modExtra.do_after_publish
+On Error Resume Next
+    Application.Run "modExtra.do_after_publish"
+On Error GoTo 0
+    
+    
+'================
+'== LOG UPDATE ==
+'================
+On Error Resume Next
+    bAEE = Application.EnableEvents
+    Application.EnableEvents = False
+    admin.DoDebug = True
+    Application.StatusBar = "Logging update...."
+    Dim rLogHere As Range, c As Integer
+'find first empty cell for logging this update
+    Set rLogHere = fn_Updates_Block     'create/reformat block and set rLogHere to first header cell
+    If rLogHere.Offset(1) = "" Then
+        Set rLogHere = rLogHere.Offset(1)
+    Else
+        Set rLogHere = rLogHere.End(xlDown)
+    'has this process been run once and restarted?
+        If rLogHere.Offset(0, 1) <> "" Then
+        'no, so start a new log row
+            Set rLogHere = rLogHere.Offset(1)
+            rLogHere.NumberFormat = "yyyy-mm-dd hh:mm"
+        Else
+        'yes, so this cell is tStart
+            tStart = rLogHere
+        End If
+    End If
+    If tStart = 0 Then
+        rLogHere = Now
+    Else
+        If rLogHere <> tStart Then rLogHere = tStart
+    End If
+'set c to 1, overcomes errors with missing ranges
+    c = 1
+'find column for username
+    c = admin.Range("admin_UpdatedBy").Column - rLogHere.Column
+    Set rLogHere = rLogHere.Offset(0, c)
+    rLogHere = Environ("username") & "|" & Environ("computername")
+'find column for duration
+    c = admin.Range("admin_UpdatedDur").Column - rLogHere.Column
+    Set rLogHere = rLogHere.Offset(0, c)
+'calculate total duration for publication
+    If tStart = 0 Then
+        rLogHere = "manual"
+    Else
+        tTotal = Int((Now - tStart) * 24 * 60 * 60)  'secs
+        If tTotal > 60 Then rLogHere = Int(tTotal / 60) & "mins" Else rLogHere = tTotal & "secs"
+    End If
+'find column for Published Time
+    c = admin.Range("admin_PublishedTime").Column - rLogHere.Column
+    Set rLogHere = rLogHere.Offset(0, c)
+'enter published time
+    rLogHere.NumberFormat = "yyyy-mm-dd hh:mm"
+    If Right(sOutputFile, 1) = "\" Then rLogHere = "n/a" Else rLogHere = modFile.mfGetDateModified(sOutputFile)
+    Application.EnableEvents = bAEE
+On Error GoTo 0
+
+
+'==============
+'== VALIDITY ==
+'==============
+'redo current boxouts for success/failure notice
+sDataCheckResult_HTML = fn_DataCheckResult_HTML
+sUpdateResult_HTML = fn_UpdateResult_HTML
+
+On Error Resume Next
+    Application.StatusBar = False
+'test admin sheet for named ranges "chk_XXXX" = True/False
+    If fn_DataCheck = False Then
+        Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+        If BypassMsgBox = False Then If MsgBox("Validation check(s) failed.  Continue or stop now?", vbQuestion Or vbOKCancel) = vbCancel Then Exit Sub
+        modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+            , "Error in update: " & ThisWorkbook.Name _
+            , "Report hasn't completely updated, but it has published.  If you didn't receive any error regarding a failed data connection, this is likely to relate to data validity checks on the admin sheet.  Check the output file, fix the problem, and and publish manually if needed." _
+                & "<p>" & "Output: <a href=" & Chr(34) & sOutputFile & Chr(34) & ">" & Dir(sOutputFile) & "</a>" _
+                & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                & "<p>" & sDataCheckResult_HTML _
+                & "<p>" & sUpdateResult_HTML _
+                & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                , False, , , , , True
+        If DropOutBeforeQuit Then Exit Sub
+        Call xlUtils.xlU_SafeToQuitExcel(True, BypassMsgBox)
+    Else
+        Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 1)
+        If BypassMsgBox = False Then
+            If MsgBox("Published OK.  Close this workbook?", vbQuestion Or vbYesNo) = vbNo Then
+                Application.EnableEvents = True
+                ThisWorkbook.redo_open
+                Exit Sub
+            End If
+        End If
+        If Right(sOutputFile, 1) = "\" Then
+            modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+                , "Successfully updated: " & ThisWorkbook.Name _
+                , "Report published OK from master file." _
+                    & "<p>" & "Output file not specified" _
+                    & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                    & "<p>" & sDataCheckResult_HTML _
+                    & "<p>" & sUpdateResult_HTML _
+                    & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                    , False, , , , , True
+        Else
+            modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+                , "Successfully updated: " & ThisWorkbook.Name _
+                , "Report published OK from master file." _
+                    & "<p>" & "Output: <a href=" & Chr(34) & sOutputFile & Chr(34) & ">" & Dir(sOutputFile) & "</a>" _
+                    & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                    & "<p>" & sDataCheckResult_HTML _
+                    & "<p>" & sUpdateResult_HTML _
+                    & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                    , False, , , , , True
+        End If
+        If bOpenedReadOnly Then GoTo ErrorOpenedReadOnly
+        If DropOutBeforeQuit Then Exit Sub
+On Error GoTo ErrorDidNotSaveMasterFile
+'wait for max 2 mins before just dumping out of this Excel session
+        Application.CalculateBeforeSave = False
+        ThisWorkbook.Save
+On Error Resume Next
+        Call xlUtils.xlU_SafeToQuitExcel(True, True)
+        End
+    End If
+End    'not strictly necessary to do this, because workbook is already closed, it's just a safety net
+
+
+
+'===================
+'== ERRORHANDLERS ==
+'===================
+ErrorCannotDelete:
+    Application.StatusBar = "ERROR WHEN PUBLISHING " & sOutputFile
+    Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+    If BypassMsgBox = True Then
+        modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+            , "Publish failed: " & ThisWorkbook.Name _
+            , "Couldn't delete output workbook, check and rerun if necessary:" _
+                & "<p>" & "Output: <a href=" & Chr(34) & sOutputFile & Chr(34) & ">" & Dir(sOutputFile) & "</a>" _
+                & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                & "<p>" & sDataCheckResult_HTML _
+                & "<p>" & sUpdateResult_HTML _
+                & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                , False, , , , , True
+        Call xlUtils.xlU_SafeToQuitExcel(True, True)
+        End
+    Else
+        MsgBox "Couldn't delete target workbook", vbExclamation, ""
+    End If
+    Exit Sub
+
+ErrorOpenedReadOnly:
+    Application.StatusBar = "ERROR WHEN PUBLISHING " & sOutputFile
+    Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+    If BypassMsgBox = True Then
+        modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+            , "Report update log error: " & ThisWorkbook.Name _
+            , "Opened master file read-only, couldn't save" _
+                & "<p>" & "Output: <a href=" & Chr(34) & sOutputFile & Chr(34) & ">" & Dir(sOutputFile) & "</a>" _
+                & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                & "<p>" & sDataCheckResult_HTML _
+                & "<p>" & sUpdateResult_HTML _
+                & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                , False, , , , , True
+        Call xlUtils.xlU_SafeToQuitExcel(True, True)
+        End
+    Else
+        MsgBox "Opened master file read-only, can't save update log", vbExclamation, ""
+        Exit Sub 'just quit VBA, error might be important, won't have any impact
+    End If
+
+ErrorDidNotSaveMasterFile:
+    Application.StatusBar = "ERROR WHEN PUBLISHING FROM " & ThisWorkbook.Name
+    Call xlAudit.TXT_Schedule(dUpdateStarted, dUpdateFinished, dPublishStarted, dPublishFinished, 0)
+    If BypassMsgBox = True Then
+        modEmail.SendEmail sAutoEmailTO, sAutoEmailCC, _
+            , "Publish failed: " & ThisWorkbook.Name _
+            , "Master file apparently failed to save, possibly a network error?  Check the output file is OK, and rerun only if needed." _
+                & "<p>" & "Master: <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.Name & "</a>" _
+                & "<p>" & "Output: <a href=" & Chr(34) & sOutputFile & Chr(34) & ">" & Dir(sOutputFile) & "</a>" _
+                & "<p>" & sDataCheckResult_HTML _
+                & "<p>" & sUpdateResult_HTML _
+                & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+                , False, , , , , True
+        Call xlUtils.xlU_SafeToQuitExcel(True, True)
+        End
+    Else
+        MsgBox "Couldn't save master file with update log", vbExclamation, ""
+        Exit Sub 'just quit VBA, error might be important, won't have any impact
+    End If
+    
+End Sub
+
+Function fn_Updates_Block() As Range
+'v5.05 2017-06-07 14:21 - disabled events during function
+'v4.56 2017-05-08 13:05 - widened column to fit "username|computername"
+'v4.48 2017-03-08 15:58 - changed admin sheet ref to admin object name
+'v4.41 2017-02-20 15:26 - creates/resets Update Log block formatting and range names
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+On Error Resume Next
+Dim r As Range, sh As Worksheet
+Set sh = admin
+
+Set r = sh.Range("admin_UpdatedTime")
+r = "Time"
+    r.Font.Bold = True
+    r.Interior.ColorIndex = cUpdateBlockHeaderRowColorIndex
+    r.EntireColumn.ColumnWidth = 14.89
+    ThisWorkbook.Names.Add "admin_UpdatedTime", r   'this resets potentially missing name under ThisWorkbook scope
+
+Set r = r.Offset(0, 1)
+r = "Username"
+    r.Font.Bold = True
+    r.Interior.ColorIndex = cUpdateBlockHeaderRowColorIndex
+    r.EntireColumn.ColumnWidth = 26.71
+    ThisWorkbook.Names.Add "admin_UpdatedBy", r
+
+Set r = r.Offset(0, 1)
+r = "Duration"
+    r.Font.Bold = True
+    r.Interior.ColorIndex = cUpdateBlockHeaderRowColorIndex
+    ThisWorkbook.Names.Add "admin_UpdatedDur", r
+
+Set r = r.Offset(0, 1)
+r = "Published Time"
+    r.Font.Bold = True
+    r.Interior.ColorIndex = cUpdateBlockHeaderRowColorIndex
+    r.EntireColumn.ColumnWidth = 14.89
+    ThisWorkbook.Names.Add "admin_PublishedTime", r
+
+If r.Offset(0, 1) <> "" Then r.Offset(0, 1).EntireColumn.Insert
+
+Set fn_Updates_Block = sh.Range("admin_UpdatedTime")
+Application.EnableEvents = bAEE
+End Function
+
+Function fn_DataCheck() As Boolean
+'v5.25 2017-07-06 09:27 - defaults to True, no longer Private, tidied up Calculation code, deletes duff "chk_" range names
+'v5.19 2017-07-03 13:12 - changed PP calc to SemiAutomatic (stops Excel hanging?)
+'v5.11 2017-06-27 16:03 - bugfix in update/publish routine from v5.10
+'v5.09 2017-06-26 13:18 - calculates cell before continuing, may fix calc errors
+'v4.21 2016-08-26 09:01 - sends email if date filters can't be applied
+'v3.00 2015-12-22 10:01 - improved notes
+'v1.00 2015-09-18       - first release version
+'runs before publishing
+'reports False if any workbook-scoped range names beginning with "chk_" have value FALSE
+On Error Resume Next
+Call pivValidate_Filter_Reset
+If fn_IsPP Then
+    Application.Calculation = xlCalculationSemiautomatic
+End If
+fn_DataCheck = True 'default is to assume OK
+Dim n As Name
+For Each n In Names
+    If Left(n.Name, 4) = "chk_" Then
+        If n.RefersTo = "=admin!#REF!" Then
+            n.Delete
+        Else
+            admin.Range(n.RefersTo).Calculate
+            fn_DataCheck = admin.Range(n.RefersTo).Value
+            If fn_DataCheck = False Then Exit Function
+        End If
+    End If
+Next n
+'fn_DataCheck = True
+End Function
+
+Function fn_DataCheckResult_HTML() As String
+'v6.25 2019-01-14 18:26 - fn_DataCheckResult_HTML: moved val_Today and val_ThisMonday to admin_Validation
+'v6.23 2018-05-21 10:53 - fn_DataCheckResult_HTML: sends error if HTML boxout fails
+'v6.06 2017-08-04 08:41 - resizes column 3 to fit validation explanation
+'v5.27 2017-07-06 12:48 - includes red text next to result cell
+'v5.25 2017-07-06 09:28 - ignores duff "chk_" range names
+'v4.38 2017-02-07 09:27 - first release version (copied from fn_DataCheck)
+'produces HTML table of chk_XXXX results to feed into confirmation emails
+On Error Resume Next
+Call pivValidate_Filter_Reset
+fn_DataCheckResult_HTML = "<P>"
+Dim n As Name, rval As Range
+Dim sHTML As String
+For Each n In Names
+    If Left(n.Name, 4) = "chk_" Then
+        If n.RefersTo <> "=admin!#REF!" Then
+            Set rval = admin.Range(n.RefersTo)
+            rval.Offset(0, 1).EntireColumn.AutoFit
+            Set rval = admin.Range(rval.Offset(0, -1), rval.Offset(0, 1))   'inclues red text next to cells
+            sHTML = modEmail.RangetoHTML(rval)
+            If sHTML = "" Then
+                modEmail.SendEmail sEmailTeam, , , "VBA Error: HTML boxout failed", "<P>This will cause empty windows on VM, if automated.<p>" & ThisWorkbook.FullName, , , , , , True, , , False
+            End If
+            fn_DataCheckResult_HTML = fn_DataCheckResult_HTML & sHTML
+        End If
+    End If
+Next n
+fn_DataCheckResult_HTML = fn_DataCheckResult_HTML & "<P>"
+On Error Resume Next
+fn_DataCheckResult_HTML = fn_DataCheckResult_HTML & Format(ThisWorkbook.Sheets("Validation").Range("val_ThisMonday"), "yyyy-mm-dd") & " : @ThisMonday<br>"
+fn_DataCheckResult_HTML = fn_DataCheckResult_HTML & Format(ThisWorkbook.Sheets("Validation").Range("val_Today"), "yyyy-mm-dd") & " : @Today<br>"
+End Function
+
+Function fn_UpdateResult_HTML() As String
+'v4.40 2017-02-07 13:12 - first release version (adapted from fn_DataCheckResult_HTML)
+'produces HTML table from Updates table to feed into confirmation emails
+On Error Resume Next
+fn_UpdateResult_HTML = "<P>"
+Dim rVal1 As Range, rVal2 As Range
+
+'first get the update history (just the current update)
+Set rVal1 = admin.Range("admin_UpdatedTime")
+Set rVal2 = admin.Range("admin_PublishedTime")
+If Not rVal1 Is Nothing And Not rVal2 Is Nothing Then
+    Set rVal1 = Nothing
+    Set rVal1 = admin.Range(admin.Range("admin_UpdatedTime"), admin.Range("admin_PublishedTime"))
+    If Not rVal1 Is Nothing Then
+        Set rVal2 = Nothing
+        Set rVal2 = rVal1.Offset(rVal1.End(xlDown).Row - rVal1.Row)
+        fn_UpdateResult_HTML = fn_UpdateResult_HTML & modEmail.RangetoHTML(Union(rVal1, rVal2))
+    End If
+End If
+Set rVal1 = Nothing
+Set rVal2 = Nothing
+
+'then get the Connections list with updated date (just the current update)
+Set rVal1 = admin.Range("admin_ConnIndex")
+Set rVal2 = admin.Range("admin_ConnTime")
+If Not rVal1 Is Nothing And Not rVal2 Is Nothing Then
+    Set rVal1 = Nothing
+    Set rVal1 = admin.Range(admin.Range("admin_ConnIndex"), admin.Range("admin_ConnTime"))
+    If Not rVal1 Is Nothing Then
+        Set rVal2 = admin.Range(rVal1, rVal1.End(xlDown))
+        fn_UpdateResult_HTML = fn_UpdateResult_HTML & modEmail.RangetoHTML(rVal2)
+    End If
+End If
+Set rVal1 = Nothing
+Set rVal2 = Nothing
+
+End Function
+
+Sub pivValidate_Filter_Reset()
+'v4.23 2016-08-30 11:48 - code tweak, no longer requires pivValidate sheet
+'v4.22 2016-08-30 09:50 - requires xlPivots v6.01 or later
+'v4.21 2016-08-26 09:01 - calculates after filtering to update "chk_" ranges
+'v4.20 2016-07-20 11:34 - sends email if date filters can't be applied
+'for each pivot on pivValidate sheet,
+'---> resets to 1 any PageFields: L4W, LW, WTD, LWE, L7D, LD, etc.
+'---> resets to 0 any PageFields: ConvExcl, GrossExcl
+'won't work correctly if a pivot has >1 date filter or exclusion field
+
+On Error Resume Next
+Dim pv As Worksheet, pt As PivotTable, pf As PivotField
+Set pv = ThisWorkbook.Sheets("pivValidate")
+If pv Is Nothing Then Exit Sub
+For Each pt In pv.PivotTables
+'time period
+    Set pf = pt.PageFields("L4W")
+    Set pf = pt.PageFields("WTD")
+    Set pf = pt.PageFields("LW")
+    Set pf = pt.PageFields("LD")
+    Set pf = pt.PageFields("LWE")
+    Set pf = pt.PageFields("LDLW")
+    Set pf = pt.PageFields("PW")
+    If Not pf Is Nothing Then
+        If pf.CurrentPage <> 1 Then pf.CurrentPage = 1
+        If pf.CurrentPage <> 1 Then
+            Call do_Send_Filter_Warning(pt.Name, pf.Name)
+            Exit Sub
+        End If
+        Set pf = Nothing
+    End If
+'conv/gross
+    Set pf = pt.PageFields("ConvExcl")
+    Set pf = pt.PageFields("GrossExcl")
+    If Not pf Is Nothing Then
+        If pf.CurrentPage <> 0 Then xlPivots.PageField_Clear pf
+        If pf.CurrentPage <> 0 Then pf.CurrentPage = 0
+        If pf.CurrentPage <> 0 Then
+            Call do_Send_Filter_Warning(pt.Name, pf.Name)
+            Exit Sub
+        End If
+        Set pf = Nothing
+    End If
+Next pt
+Application.Calculate
+End Sub
+
+Sub do_Send_Filter_Warning(ByVal PivotTableName As String, ByVal PivFieldName As String)
+'v4.42 2017-02-20 15:58 - added new blocks to failure emails
+'v4.40 2017-02-07 13:03 - minor changes to email formatting
+'v4.38 2017-02-07 09:27 - tweaks to error messages
+'v4.26 2016-09-15 11:38 - tweaks to error messages
+'v4.20 2016-07-20 11:34 - sends email if date filters can't be applied
+modEmail.SendEmail sEmailTeam, , sEmailVM _
+    , "Update Failed: " & ThisWorkbook.Name & " pivValidate not filtered correctly" _
+    , "Warning: looks like data for " & PivFieldName & " is missing from table " & PivotTableName & " on pivValidate sheet." _
+        & "<p>" & "Report will need to be rerun later." _
+        & "<p>" & "<a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.FullName & "</a>" _
+        & "<p>" & fn_DataCheckResult_HTML _
+        & "<p>" & fn_UpdateResult_HTML _
+        & "<p>" & modAuto.modAutoCodeVer & "<br>" & xlPivots.xlPivotsCodeVer & "<br>" & xlBackgroundRefresh.xlBackgroundRefreshCodeVer & "<br>" & modFile.modFileCodeVer _
+        , False, , , , , True
+End Sub
+
+Sub admin_ReplaceMaster()
+'v6.36 2020-10-22 16:15 - admin_ReplaceMaster: removed hard-coded admin_Validation (sheet now optional)
+'v4.48 2017-03-08 15:58 - updates master path header automatically
+'v4.39 2017-02-07 09:59 - moved this sub from admin sheet
+
+On Error Resume Next
+
+Dim wsA As Worksheet
+ 
+If MsgBox("Overwrite current 'live' master file?" & vbLf & vbLf & _
+    "This will change all Data Connections to non-background, allowing auto-update, " & _
+    "and will then totally overwrite the existing master file.  Make sure you've " & _
+    "updated the Changelog before doing this.", _
+    vbQuestion Or vbYesNo, "") = vbNo _
+    Then Exit Sub
+
+'set Data Connections to NOT background (allows automation)
+Dim c As Object
+For Each c In ThisWorkbook.Connections
+    c.OLEDBConnection.BackgroundQuery = False
+    c.ODBCConnection.BackgroundQuery = False
+Next c
+
+'hide the admin sheets not needed in the 'live' master file
+admin.Visible = xlSheetHidden
+Set wsA = ThisWorkbook.Sheets("admin_Validation")
+If Not wsA Is Nothing Then wsA.Visible = xlSheetHidden
+admin_ChangeLog.Visible = xlSheetHidden
+'admin_Airport_Groups.Visible = xlSheetHidden
+
+'save a copy in current state
+admin.Range("admin_Master").Offset(-1) = "MASTER FILE"
+ThisWorkbook.SaveCopyAs admin.Range("admin_Master")
+
+'return Data Connections to background and unhide admin sheets in this file
+admin.Visible = xlSheetVisible
+Set wsA = ThisWorkbook.Sheets("admin_Validation")
+If Not wsA Is Nothing Then wsA.Visible = xlSheetVisible
+admin_ChangeLog.Visible = xlSheetVisible
+'admin_Airport_Groups.Visible = xlSheetVisible
+For Each c In ThisWorkbook.Connections
+    c.OLEDBConnection.BackgroundQuery = True
+    c.ODBCConnection.BackgroundQuery = True
+Next c
+
+MsgBox "Now save & close this test version, and the report will update from the master file on a schedule", vbInformation, "modAuto v" & modAuto.modAutoCodeVer
+End Sub
+
+Private Function sAutoEmailTO() As String
+'requires this range named on admin sheet
+    sAutoEmailTO = admin.Range("admin_EmailTO")
+End Function
+
+Private Function sAutoEmailCC() As String
+'requires this range named on admin sheet
+    sAutoEmailCC = admin.Range("admin_EmailCC")
+End Function
+
+
+
+
+Function TW_BeforePrint() As Boolean
+'v4.00 2016-05-04 16:24 - moved from ThisWorkbook module
+'    TW_BeforePrint = (ActiveSheet.Name = shReport.Name)
+'    If TW_BeforePrint = True Then
+'        If MsgBox("Sorry, ad-hoc printing has been disabled. Please use the print button.  (Cancel will continue to print as selected.)", vbInformation Or vbOKCancel, "") = vbCancel Then Cancel = False
+'    End If
+End Function
+
+Function TW_BeforeClose() As Boolean
+'v6.35 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v5.33 2017-07-31 11:47 - ScreenUpdating efficiency improvements
+'v5.31 2017-07-27 16:55 - skips close routine when user is not admin
+'v4.58 2017-05-12 10:19 - extra close routine exception for Generic Sheets for Automation
+'v4.29 2016-11-25 14:11 - bugfix, resets bLoop when cancelling
+'v4.27 2016-10-05 16:37 - exception for Ad-Hoc Tests folder
+'v4.11 2016-06-24 14:31 - improvement in close process
+'v4.08 2016-06-14 16:11 - bugfix: prevents closing without saving
+'v4.04 2016-05-10 09:39 - bugfix: prevents double-asking to replace live report
+'v4.00 2016-05-04 16:24 - moved from ThisWorkbook module
+'v3.13 2016-03-01 15:02 - bugfix in save when fileserver/local machine timestamps are slightly wrong
+'v3.12 2016-02-29 08:36 - bugfix in Y: warning for master
+'v3.10 2016-02-26 08:36 - fixed routine to offer to publish live report from master
+'v3.09 2016-02-24 11:19 - fixed routine to offer to publish live report from test master
+'v3.08 2016-02-24 10:46 - fixed routine to update Master file automatically
+'v3.00 2015-12-22 10:01 - automation improvements for VM, doesn't halt on any errors
+
+'just exit this if automated on VM
+If InStr(sAutomationUser, LCase(Environ("Username"))) > 0 Then Exit Function
+
+'just exit this if non-authorised user
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'If modAuto.Check_Access_Control = 0 Then Exit Function
+
+Dim mbxr As VbMsgBoxResult
+
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+
+'exception for Generic Sheets file
+If ThisWorkbook.Name = "Generic Sheets for Automation.xlsb" Then
+    ThisWorkbook.Sheets("INSTRUCTIONS").Select
+    If InStr(Application.Caption, "read-only") > 0 Then
+        mbxr = MsgBox(ThisWorkbook.Name & " opened read-only.  Change to writeable and save changes?", vbQuestion Or vbYesNoCancel, "")
+        If mbxr = vbCancel Then
+            TW_BeforeClose = True
+            GoTo CleanUp
+        ElseIf mbxr = vbYes Then
+            TW_BeforeClose = True
+            xlUtils.xlU_Remove_Read_Only
+            xlUtils.xlU_Save_Make_Read_Only_And_Close
+            GoTo CleanUp
+        Else
+        End If
+    Else
+        mbxr = MsgBox(ThisWorkbook.Name & " should be made read-only and saved.  Is this OK?", vbQuestion Or vbOKCancel, "")
+        If mbxr = vbCancel Then
+            TW_BeforeClose = True
+            GoTo CleanUp
+        Else
+            xlUtils.xlU_Save_Make_Read_Only_And_Close
+            GoTo CleanUp
+        End If
+    End If
+End If
+
+'drop out to prevent endless looping
+If bLoop = True Then GoTo CleanUp Else bLoop = True
+
+Dim bPubReport As Boolean
+
+'discover the location of this file
+Dim sWorkingPath As String, sAdminPath As String, sOutputPath As String, sMasterFile As String
+sWorkingPath = admin.Range("admin_Working")     'not currently used in code
+sMasterFile = admin.Range("admin_Master")
+sOutputPath = admin.Range("admin_OutputFile")   'not currently used in code
+
+If InStr(ThisWorkbook.FullName, "(master)") > 0 And Left(ThisWorkbook.FullName, 2) = "Y:" Then
+    MsgBox "Opened Master from Y: drive, things might not work properly", vbExclamation, ""
+End If
+
+If ThisWorkbook.FullName = sMasterFile Then
+'master file, ask to publish
+    If MsgBox("Recommend that you replace the live report now.  Update it now or wait until next refresh?  (No will continue with close as usual and wait until next refresh.)" _
+        , vbQuestion Or vbYesNo, "ACTIVE MASTER FILE") = vbNo _
+            Then GoTo CleanUp
+    bPubReport = True
+    modAuto.auto_Publish
+End If
+
+If InStr(ThisWorkbook.FullName, "Automation\Testing") = 0 Then
+'not a test version, just carry on with normal Excel close
+    GoTo CleanUp
+Else
+'test version
+    If InStr(ThisWorkbook.FullName, "\Ad-Hoc Tests\") > 0 Then GoTo CleanUp
+'save first?
+    mbxr = MsgBox("Save changes to " & ThisWorkbook.Name & "?", vbQuestion Or vbYesNoCancel, "")
+    If mbxr = vbYes Then
+        ThisWorkbook.Save
+    ElseIf mbxr = vbCancel Then
+        TW_BeforeClose = True   'cancels Close
+        bLoop = False   'resets loop, to prevent errors later on
+        Exit Function
+    Else
+        ThisWorkbook.Close False
+    End If
+'test version, prompt the user to save over existing active master file
+    If MsgBox("Recommend that you replace the active master file now, but ONLY if you're " _
+        & "done with testing.  Update it now?  (No will continue with close as usual.)" _
+            , vbQuestion Or vbYesNo, "TEST VERSION") = vbNo _
+                Then GoTo CleanUp
+    MsgBox "!!! THINK !!!" & vbLf & vbLf & "Do you also need to do a test run of the new master on the VM *today*?", vbCritical Or vbYesNo, "IMPORTANT!!"
+'save over master file
+    Dim t1 As Double, t2 As Double
+'adjust Now by 10 seconds back to account for possible small differences in fileserver clock
+    t1 = Now - TimeSerial(0, 0, 10)
+    Debug.Print "Now:   " & Format(t1, "yyyy-mm-dd hh:mm:ss")
+    ThisWorkbook.SaveCopyAs sMasterFile
+    t2 = modFile.mfGetDateModified(sMasterFile)
+    Debug.Print "Saved: " & Format(t2, "yyyy-mm-dd hh:mm:ss")
+'check it worked
+    If t2 <= t1 Then
+    'master file not saved, cancel close, must save it manually
+        TW_BeforeClose = True
+        MsgBox "WARNING: couldn't save master file.  Try it manually, using the button on admin sheet.  Close routine will be cancelled so you can do this.", vbCritical, "TEST VERSION"
+    Else
+    'master file saved OK, just carry on with close routine
+        If bPubReport Then GoTo CleanUp
+        If MsgBox("Recommend that you also replace the live report now.  Update it now or wait until next refresh?  (No will continue with close as usual and wait until next refresh.)" _
+            , vbQuestion Or vbYesNo, "TEST VERSION") = vbNo _
+                Then GoTo CleanUp
+        modAuto.auto_Publish True
+    End If
+End If
+
+CleanUp:
+Application.ScreenUpdating = bASU
+End Function
+
+Function TW_BeforeSave() As Boolean
+'v6.21 2018-04-23 15:31 - TW_BeforeSave: removed the last step, the experiment doesn't work
+'v6.03 2017-08-02 15:54 - TW_BeforeSave: tweak to message box to add EXPERIMENTAL FEATURE warning
+'v6.02 2017-08-02 14:58 - TW_BeforeSave: offers to save a new test version, incremental number with Changelog column
+'v5.33 2017-07-31 11:47 - ScreenUpdating efficiency improvements
+'v5.30 2017-07-27 16:45 - very hides all sheets before saving (security measure)
+'v5.12 2017-06-28 15:33 - added admin_Clean_Sheet to process various layout checks
+'v4.10 2016-06-23 13:36 - tweak to fix when publishing from test
+'v4.09 2016-06-20 11:09
+'handy processes to clean up general errors, mostly in TEST versions
+
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+
+'1. delete Names from MACROS sheet, common error when transferring from Generic Sheets file
+    Dim ws As Object 'needs to be an object to be able to hide Chart Sheets later
+    Dim nm As Name
+    Set ws = admin_MACROS
+    If ws.Names.Count > 0 Then
+        ws.Unprotect
+        For Each nm In ws.Names
+            nm.Delete
+        Next nm
+        ws.Protect
+    End If
+
+'2. clean up admin sheet by removing old stuff
+    Call admin_Clean_Sheet
+
+'3. always flag Debugging On to be False, it's set True anyway for Test versions
+    admin.DoDebug = False
+
+'4. rearrange admin sheets (runs on test versions only)
+    Call modAuto.admin_Rearrange_Sheets
+
+'5. very hide all sheets except MACROS
+    ThisWorkbook.Sheets("MACROS").Visible = xlSheetVisible
+    For Each ws In ThisWorkbook.Sheets
+        If ws.Name <> "MACROS" And ws.Visible <> xlSheetVeryHidden Then ws.Visible = xlSheetVeryHidden
+    Next ws
+
+'6. for test versions only, ask to increment the version number before saving
+'this doesn't exactly work - Excel crashes every time, it does reopen the recovered file, but it's really messy
+'    If InStr(ThisWorkbook.FullName, "Automation\Testing") > 0 Then
+'        If MsgBox("Create a new test version with incremental numbering?" & vbLf & vbLf & "No to save this version", vbQuestion Or vbYesNo, "EXPERIMENTAL FEATURE") = vbYes Then
+'            TW_BeforeSave = True    'cancels auto routine
+'            Application.OnTime Now + TimeSerial(0, 0, 1), "'modAuto.SaveNewTestVersion ThisWorkbook'"
+'            End                     'ends code to prevent Excel crashing
+'        End If
+'    End If
+Application.ScreenUpdating = bASU
+
+End Function
+
+Function TW_AfterSave() As Boolean
+'v5.32 2017-07-31 10:43 - bugfix for Generic Sheets file
+'v4.27 2016-10-05 16:37 - exception for Ad-Hoc Tests folder
+'v4.14 2016-06-27 14:41 - tweak to prevent loops after saving except as Test
+'v4.09 2016-06-20 11:09
+'forces refresh when e.g. saving output file as Testing file
+If bExtraProcess Then Exit Function
+If InStr(ThisWorkbook.FullName, "Automation\Testing") > 0 _
+Or ThisWorkbook.Name = "Generic Sheets for Automation.xlsb" _
+Then ThisWorkbook.redo_open
+End Function
+
+Sub TW_Open()
+'v6.35 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v6.32 2019-09-20 16:46 - TW_Open: changes file access to read-only for output files
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v6.17 2018-01-24 16:18 - errorhandler (blunt) around MACROS veryhidden
+'v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+'v5.33 2017-07-31 11:47 - ScreenUpdating efficiency improvements
+'v5.32 2017-07-31 10:28 - bugfix for Generic Sheets file, changed order
+'v5.31 2017-07-27 16:55 - disallows open routine for master/testing when user is not admin
+'v5.29 2017-07-27 16:26 - added admin_AccessControl.Check_Access_Control to master/test files
+'v5.16 2017-06-29 09:57 - minor tweak to Call auto_Update
+'v5.04 2017-05-30 12:30 - added fn_IsPP to xlBackgroundRefresh
+'v4.48 2017-03-08 15:58 - updates testing path header automatically
+'v4.47 2017-02-28 12:00 - changed ws to Object to handle Charts
+'v4.37 2017-02-02 14:33 - records Testing folder automatically
+'v4.34 2017-01-16 10:14 - bugfix, references admin.Range expicitly
+'v4.33 2016-12-08 16:28 - added *optional* extra routine for modExtra.do_extras_for_output_file
+'v4.31 2016-12-06 11:11 - added *optional* extra routine for modExtra.do_extras_first
+'v4.30 2016-11-29 13:21 - calculations manual, performance gains, PP reports should use xlPivots.PP_Calcs_Finished
+'v4.27 2016-10-05 16:37 - exception for Ad-Hoc Tests folder
+'v4.25 2016-09-08 12:25 - added auto-calculate for PP reports
+'v4.18 2016-07-05 10:18 - move MACROS sheet to start
+'v4.15 2016-06-28 13:50 - better automatic control of admin.DoDebug
+'v4.02 2016-05-05 17:01 - bugfix for Generic Sheets file only
+'v4.00 2016-05-04 16:24 - moved from ThisWorkbook module
+'v3.15 2016-04-05 10:02 - selects INSTRUCTIONS sheet in Generic file only
+'v3.14 2016-03-21 08:56 - shows ALL sheets when opening - forces use of macros
+'v3.07 2016-01-08 12:10 - minor improvement to code
+'v3.01 2015-12-23 14:10 - minor improvement to code
+
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+
+Dim bGen As Boolean
+bGen = ThisWorkbook.Name = "Generic Sheets for Automation.xlsb"
+
+'show any sheets that are not admin sheets
+Dim ws As Object 'needs to be an object to be able to hide Chart Sheets
+For Each ws In ThisWorkbook.Sheets
+    If (ws.Tab.ColorIndex <> 6 And ws.Tab.ColorIndex <> 44 And ws.Visible <> xlSheetVisible) Or bGen Then ws.Visible = xlSheetVisible
+Next ws
+
+'Generic Sheets for Automation exception
+If bGen Then
+    ThisWorkbook.Sheets("MACROS").Visible = xlSheetVisible
+    ThisWorkbook.Sheets("INSTRUCTIONS").Select
+    MsgBox "TRIGGER WARNING: make sure you follow the INSTRUCTIONS to prevent issues occurring!!  You have been warned", vbExclamation, "Generic Sheets"
+    Application.ScreenUpdating = bASU
+    Exit Sub
+End If
+
+'hide MACROS sheet
+On Error Resume Next
+admin_MACROS.Visible = xlSheetVeryHidden
+On Error GoTo 0
+
+'Call Email_Audit
+Call xlAudit.TXT_Audit
+
+'forces calculation if a PowerPivot (PP) report
+If xlBackgroundRefresh.fn_IsPP Then
+With Application
+    .StatusBar = "Calculating PowerPivot in background... please wait"
+    .CalculateUntilAsyncQueriesDone
+    .Calculation = xlCalculationSemiautomatic
+    .StatusBar = False
+End With
+End If
+
+'run routines for output file
+Dim pthfn As String
+pthfn = admin.Range("admin_OutputFile")
+If ThisWorkbook.FullName = pthfn Then
+    On Error Resume Next
+    Application.Run "modExtra.do_extras_for_output_file"
+    On Error GoTo 0
+End If
+
+'bypass opening routine if NOT master file
+If InStr(ThisWorkbook.Name, "(master)") = 0 Then
+    'need to change file access here
+    Application.DisplayAlerts = False
+    If InStr(Application.Caption, "read-only") = 0 Then ThisWorkbook.ChangeFileAccess xlReadOnly
+    Exit Sub
+End If
+
+'v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'check for admin users beyond this point
+'If modAuto.Check_Access_Control = 0 Then
+'    MsgBox "Not allowed - contact P&C Insight", vbCritical, ""
+'    Application.ScreenUpdating = bASU
+'    ThisWorkbook.Close False
+'End If
+
+'bypass opening routine if TESTING file
+If InStr(ThisWorkbook.FullName, "Automation\Testing") > 0 Then
+    If InStr(ThisWorkbook.FullName, "\Ad-Hoc Tests\") > 0 Then
+        MsgBox "Ad-Hoc Test version", vbInformation, ""
+    Else
+        MsgBox "Test version - publish changes to master when done", vbInformation, ""
+        If admin.Range("admin_Working") <> ThisWorkbook.Path & "\" Then admin.Range("admin_Working") = ThisWorkbook.Path & "\"
+        admin.Range("admin_Working").Offset(-1) = "TEST VERSIONS PATH"
+    End If
+'show all sheets including admin & pivot sheets
+    For Each ws In ThisWorkbook.Sheets
+        ws.Visible = xlSheetVisible
+    Next ws
+'always move MACROS sheet to start whilst all sheets are visible
+    If admin_MACROS.Index > 1 Then admin_MACROS.Move Before:=ThisWorkbook.Sheets(1)
+    admin.DoDebug = True
+    Application.ScreenUpdating = bASU
+    Exit Sub
+Else
+    admin.DoDebug = False
+End If
+
+'do extras PRIOR to update (only if the sub exists in modExtra)
+On Error Resume Next
+Application.Run "modExtra.do_extras_first"
+On Error GoTo 0
+
+If InStr(sAutomationUser, Environ("Username")) = 0 Then
+'asks to auto-update if NOT running on VM
+    If MsgBox("Auto-update?", vbQuestion Or vbYesNo) = vbNo Then Exit Sub
+End If
+Call modAuto.auto_Update
+Application.ScreenUpdating = bASU
+End Sub
+
+Function ReportVersion(Optional ByVal ShowAsMsgBox As Boolean = True) As String
+'reads version number from Changelog
+ReportVersion = admin_ChangeLog.Range("B1")
+If ShowAsMsgBox Then MsgBox ReportVersion, vbInformation, ThisWorkbook.Name
+End Function
+
+Function SaveNewTestVersion(ByRef wbTarget As Workbook) As String
+'v7.00 2020-10-23 08:45 - merged forked modFile and modFile_FSO modules
+'v6.08 2017-08-04 11:41 - SaveNewTestVersion: bugfix from v6.07 where no test version found
+'v6.07 2017-08-04 09:51 - SaveNewTestVersion: bugfix for e.g. " vs " or " V*" in filenames
+'v6.05 2017-08-03 14:42 - SaveNewTestVersion: bugfix for test version not found
+'v6.04 2017-08-02 16:04 - SaveNewTestVersion: bugfix in EnableEvents logic
+'v6.03 2017-08-02 15:52 - SaveNewTestVersion: minor tweak to prevent duplicate versions in Changelog
+'v6.02 2017-08-02 15:08 - SaveNewTestVersion: added exception to IncrementThisFile
+'                       - SaveNewTestVersion: bugfix, clears new Changelog column
+'v6.01 2017-08-02 14:54 - SaveNewTestVersion: code layout, changed to Environ("Username")
+'v6.00 2017-08-01 17:19 - added SaveNewTestVersion
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+
+On Error Resume Next
+
+With wbTarget
+
+'1. checks Testing folder for latest test version
+    Dim sCurrentTestFile As String, sNewTestFile As String
+    Dim sCurrentTestVer As String, sNewTestVer As String
+    Dim dCurrentTestVer As Double, dNewTestVer As Double
+    Dim v As Integer
+    sCurrentTestFile = modFile.Find_Newest_Filename(.Sheets("admin").Range("admin_Working"), Left(.Name, InStr(.Name, " (master)")))
+    If sCurrentTestFile = "" Then
+        sCurrentTestFile = .Sheets("admin").Range("admin_Working") & Replace(.Name, "(master)", "v1-00 (master)")
+    End If
+    If sCurrentTestFile = "" Then Exit Function
+    v = 0
+    v = InStr(sCurrentTestFile, " v")
+    While Not IsNumeric(Mid(sCurrentTestFile, v + 2, 1))
+        v = InStr(v + 2, sCurrentTestFile, " v") 'avoids errors with " vs " in filename
+    Wend
+    sCurrentTestVer = Mid(sCurrentTestFile, v + 1, InStr(v + 1, sCurrentTestFile, " ") - v - 1) 'result: v1-00
+    sNewTestVer = sCurrentTestVer
+'increments minor version by .01 to save new test version
+'NOTE: this ignores ChangeLog history, and assumes the latest version in Testing folder is current
+    sNewTestVer = Left(sNewTestVer, InStr(sNewTestVer, "-")) & Format(Right(sNewTestVer, 2) + 1, "00")
+    With .Sheets("ChangeLog")
+    If .Cells(1, 2).Value <> sNewTestVer Then
+        .Columns(2).EntireColumn.Copy
+        .Columns(2).EntireColumn.Insert
+Application.CutCopyMode = False
+        .Columns(2).EntireColumn.ClearContents
+        .Cells(1, 2).Value = sNewTestVer
+    End If
+        .Cells(2, 2).Value = Environ("Username")
+        .Cells(3, 2).Value = Now
+    End With
+    
+'2. save a new copy of the master file to the Testing folder with the next version number
+Dim bOpenNewFile As Boolean, sNewFilePath As String
+sNewFilePath = .Sheets("admin").Range("admin_Working") & Replace(sCurrentTestFile, sCurrentTestVer, sNewTestVer)
+bOpenNewFile = False
+
+If ThisWorkbook.FullName = .Sheets("admin").Range("admin_Working") & sCurrentTestFile Then
+'this is the test version: increment, open & close
+    bOpenNewFile = True
+    .Sheets("ChangeLog").Cells(4, 2).Value = "<add notes here>"
+Else
+'create the new test version with increment
+    .Sheets("ChangeLog").Cells(4, 2).Value = "auto-updated modules"
+End If
+
+Application.EnableEvents = False
+    .SaveCopyAs sNewFilePath
+Application.EnableEvents = bAEE
+If bOpenNewFile Then
+    MsgBox "New version " & sNewTestVer & " created.  Please update Changelog", vbInformation, ""
+    Sleep 1000
+On Error GoTo ErrorCouldNotOpen
+    If Dir(sNewFilePath) <> "" Then Workbooks.Open sNewFilePath
+On Error GoTo 0
+Application.EnableEvents = False
+    .Close False    'this will end macros in ThisWorkbook/wbTarget
+Application.EnableEvents = bAEE
+End If
+
+ErrorCouldNotOpen:
+End With 'wbTarget
+
+'3. use this to update the version number in the Files list if running from Generic Sheets
+    SaveNewTestVersion = sNewTestVer
+
+End Function
+
+Private Function zSleepTime(Optional ByVal pthfntest As String) As Integer
+'v6.19 2018-04-23 09:52 - zSleepTime: changed variable name to pthfntest, attempted bugfix
+'v4.49 2017-03-13 11:45 - added Sleep delay after Kill to prevent shared drive access delays
+'calculates suitable sleep time in ms based on size of file name
+Dim dDelay As Double
+Const iDefault As Long = 1000       '1s delay when no pthfn specified
+Const iDivisible As Long = 100000   'sensible divisor to convert bytes into ms delay
+If pthfntest = "" Or Dir(pthfntest) = "" Then
+    zSleepTime = iDefault
+'ElseIf Dir(pthfntest) = "" Then
+'    zSleepTime = iDefault
+Else
+    dDelay = FileLen(pthfntest) / iDivisible    'delay in ms based on existing file size
+    zSleepTime = dDelay                     'delay in ms based on existing file size
+End If
+End Function
+
+Private Sub Remove_OLD_Modules()
+'v5.02 2017-05-25 08:52 - added Remove_OLD_Modules, currently adhoc pending testing of suitable timing during update process
+'force removal of _OLD modules, if they are still there from last code update
+Dim oModule As Object, wsSource As Worksheet
+On Error Resume Next
+For Each oModule In ThisWorkbook.VBProject.VBComponents
+    If Right(oModule.Name, 4) = "_OLD" Then ThisWorkbook.VBProject.VBComponents.Remove oModule
+Next oModule
+End Sub
+
+Private Sub admin_Rearrange_Sheets()
+'v6.37 2020-10-23 08:37 - admin_Rearrange_Sheets: error handler allows for missing admin sheets
+'v6.35 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v6.30 2019-03-22 09:34 - admin_Rearrange_Sheets: deletes pivValidate if it exists
+'v6.29 2019-03-22 09:24 - admin_Rearrange_Sheets: only smax = 6 admin sheets, deletes Access Control sheet if exists
+'v6.11 2017-09-05 09:50 - admin_Rearrange_Sheets: bugfix for reports with charts
+'v6.10 2017-08-23 15:37 - admin_Rearrange_Sheets: first version
+'Call this before AND after saving a test version (only does anything if it's needed)
+'ALL sheets have to be visible to prevent errors - so make sure they are hidden or shown afterwards in the routine
+'arranges the admin sheets into the same order for consistency in all reports
+
+'only do this for test versions
+If InStr(ThisWorkbook.Path, "Automation\Testing\") = 0 Then Exit Sub
+
+Dim bAEE As Boolean, iAC As Integer
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+'show all sheets in workbook (otherwise we can't move them)
+Dim ws As Worksheet
+For Each ws In ThisWorkbook.Worksheets
+    If ws.Visible <> xlSheetVisible Then ws.Visible = xlSheetVisible
+Next ws
+
+'SHEET ORDER:
+Dim sh() As Worksheet, s As Byte, smax As Byte
+Dim rSrc As Range, rTgt As Range, sPiv As String
+smax = 6
+ReDim sh(1 To smax) As Worksheet
+With ThisWorkbook
+On Error Resume Next                            'only if you find the sheet
+
+'delete admin sheets that are no longer required:
+'Access Control
+    Set sh(1) = .Sheets("Access Control")       'no longer required after modAuto v6.27
+    If Not sh(1) Is Nothing Then
+        Application.DisplayAlerts = False
+        sh(1).Delete
+        Set sh(1) = Nothing
+        Application.DisplayAlerts = True
+    End If
+'pivValidate
+'!! see below, eventually, need to consider deleting this sheet completely, but this prepares for it in 90% of cases
+GoTo AvoidThisPart
+    Set sh(1) = .Sheets("pivValidate")          'no longer required after modAuto v6.30
+    If Not sh(1) Is Nothing Then
+        s = sh(1).PivotTables.Count
+        While s > 0                             'at least 1 pivot needs moving
+            With sh(1).PivotTables(1)
+                Set rSrc = .TableRange2
+                Application.GoTo rSrc
+                sPiv = .Name
+            End With
+            If Not rSrc Is Nothing Then
+                Set rTgt = .Sheets("Validation").Cells.SpecialCells(xlCellTypeLastCell).Offset(0, 2).EntireColumn.Cells(20)
+                Application.GoTo rTgt
+                rSrc.Cut
+                .Sheets("Validation").Paste
+                With rTgt.Cells(1)
+                    .Offset(-3) = sPiv
+                    .Offset(-3).Font.Bold = True
+                    .Offset(-5) = "* moved from pivValidate *"
+                    .Offset(-5).Font.Bold = True
+                End With
+                sPiv = ""
+                Set rSrc = Nothing
+                Set rTgt = Nothing
+                s = sh(1).PivotTables.Count
+            End If
+        Wend
+    'eventually, need to consider deleting the sheet completely, but this prepares for it in 90% of cases
+        'Application.DisplayAlerts = False
+        'sh(1).Delete
+        'Set sh(1) = Nothing
+        'Application.DisplayAlerts = True
+    End If
+AvoidThisPart:
+
+'mandatory modAuto sheets moved first:
+    Set sh(1) = .Sheets("MACROS")               'always sheet 1
+    Set sh(2) = .Sheets("admin")                'always sheet 2
+    Set sh(3) = .Sheets("Changelog")            'always sheet 3, beyond this, the order is less important
+    Set sh(4) = .Sheets("Email Notification")   'not always used by workbook
+    Set sh(5) = .Sheets("Validation")           'this is the main sheet for cubesets, etc.
+    Set sh(6) = .Sheets("pivValidate")          'only needed for @ThisMonday/@Today as we don't use the validation lookups file
+   'smax = ^ (this is set above the ReDim)
+    For s = 1 To smax
+        If Not sh(s) Is Nothing Then            'sheet exists in workbook
+            If sh(s).Index <> s Then
+                Debug.Print "Moving " & sh(s).Name & " to index " & s
+                sh(s).Move Before:=.Sheets(s)
+                If sh(s).Index = s Then
+                    Debug.Print "Moved OK"
+                Else
+                    If InStr(sAutomationUser, Environ("Username")) = 0 Then MsgBox "Sheet move failed: " & sh(s).Name & " not in correct index location (" & s & "), please move it manually"
+                End If
+            End If
+        End If
+    Next s
+End With
+On Error GoTo 0
+Application.EnableEvents = bAEE
+Application.Calculation = iAC
+End Sub
+
+Private Sub admin_Clean_Sheet()
+'v5.33 2017-07-31 11:47 - ScreenUpdating efficiency improvements
+'v5.26 2017-07-06 10:37 - removes Placeholder row from Update Log
+'v5.21 2017-07-03 14:37 - removes modAutoVer row
+'v5.14 2017-06-28 17:04 - removes old rows for "add link to SQL file"
+'v5.12 2017-06-28 14:31 - added admin_Clean_Sheet
+'processes various layout checks when saving a Test version, potentially we could also use this to update modules
+
+On Error Resume Next
+
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+Dim iAC As Integer
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+
+Dim r As Range, s As String
+
+'remove admin_Calc range if it exists
+    Set r = Nothing
+    Set r = admin.Range("admin_Calc")
+    If Not r Is Nothing Then
+        r.EntireRow.Delete
+        ThisWorkbook.Names("admin_Calc").Delete
+    End If
+
+'remove admin_Calc range if it exists
+    Set r = Nothing
+    Set r = admin.Range("admin_modAutoVer")
+    If Not r Is Nothing Then
+        r.EntireRow.Delete
+        ThisWorkbook.Names("admin_modAutoVer").Delete
+    End If
+
+'update 3 text cells at the top describing how to connect data
+    Set r = Nothing
+    Set r = admin.Range("A2:A4")
+    If Left(r.Cells(1), 8) = "Queries " Then
+    s = "Queries load directly into PivotTables, QueryTables, or PowerPivot via ODBC links"
+        If r.Cells(1) <> s Then r.Cells(1) = s
+    s = "Used file DSNs on Y as original source for ODBC, but has been changed, so connection details should be saved within this file"
+        If r.Cells(2) <> s Then r.Cells(2) = s
+    s = "All dates calculated relative to TODAY"
+        If r.Cells(3) <> s Then r.Cells(3) = s
+    'two blank cells below (NB: Offset(1,2) will be "Updated?"
+        If r.Cells(3).Offset(1) <> "" Then r.Cells.Offset(1).EntireRow.Insert
+        If r.Cells(3).Offset(2) <> "" Then r.Cells.Offset(1).EntireRow.Insert
+    End If
+
+'remove row below chk_Data ranges if it says "<< add link"
+    Set r = Nothing
+    Set r = admin.Range("chk_Sessions").Offset(1, -1)
+    If Not r Is Nothing Then
+        If Left(r.Text, 11) = "<< add link" Then r.EntireRow.Delete
+    End If
+    Set r = Nothing
+    Set r = admin.Range("chk_Bookings").Offset(1, -1)
+    If Not r Is Nothing Then
+        If Left(r.Text, 11) = "<< add link" Then r.EntireRow.Delete
+    End If
+    Set r = Nothing
+    Set r = admin.Range("chk_CI").Offset(1, -1)
+    If Not r Is Nothing Then
+        If Left(r.Text, 11) = "<< add link" Then r.EntireRow.Delete
+    End If
+    Set r = Nothing
+    Set r = admin.Range("chk_Filters").Offset(1, -1)
+    If Not r Is Nothing Then
+        If Left(r.Text, 11) = "<< add link" Then r.EntireRow.Delete
+    End If
+
+'2 blank rows above OUTPUT FILE
+    Set r = Nothing
+    Set r = admin.Range("admin_OutputFile").Offset(-1)
+    If Not r Is Nothing Then
+        r.Font.Underline = True     'this isn't formatted correctly in some admin sheets
+        While r.Offset(-2) <> ""
+            r.EntireRow.Insert
+        Wend
+    End If
+
+'2 blank rows above "Update Log"
+    Set r = Nothing
+    Set r = admin.Range("admin_UpdatedTime")
+    If Not r Is Nothing Then
+        Set r = r.EntireRow.Cells(1).Offset(-1)
+        If Not r Is Nothing Then
+            If r = "Update Log" Then
+                While r.Offset(-2) <> ""
+                    r.EntireRow.Insert
+                Wend
+            End If
+        End If
+    End If
+
+'1 Placeholder row below "Update Log"
+    Set r = Nothing
+    Set r = admin.Range("admin_UpdatedTime")
+    If Not r Is Nothing Then
+        Set r = r.Offset(1)
+        If r = 0 And r.Offset(1) <> 0 Then
+            admin.Range(r.EntireRow.Cells(1), r.EntireRow.Cells(admin.Range("admin_PublishedTime").Column)).Delete Shift:=xlUp
+        End If
+    End If
+
+'default email recipients
+    Set r = Nothing
+    Set r = admin.Range("admin_EmailTO")
+    s = sEmailVM
+        If r <> s Then r = s
+    Set r = Nothing
+    Set r = admin.Range("admin_EmailCC")
+    s = sEmailTeam
+        If r <> s Then r = s
+    
+Application.ScreenUpdating = bASU
+Application.EnableEvents = bAEE
+Application.Calculation = iAC
+
+End Sub
+
+'Function Check_Access_Control() As Byte
+''v6.28 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+''v6.18 2018-03-27 15:02 - Check_Access_Control: improved check process, only refreshes for admin users
+''v6.15 2017-12-06 17:41 - changed from Private function
+''v6.12 2017-09-06 17:22 - moved admin_AccessControl.Check_Access_Control into this module
+''if result = 0, the user is not allowed
+'Dim rU As Range, rL As Range, sUser As String, v
+'sUser = Environ("Username")
+'Set rU = admin_AccessControl.Range("Table_Access_Control").Columns(1)   'error here = Range Name is missing
+'Set rL = admin_AccessControl.Range("Table_Access_Control").Columns(2)
+'On Error Resume Next
+'Check_Access_Control = Application.Index(rL, Application.Match(sUser, rU, 0))
+'If Check_Access_Control > 0 Then
+'    Application.EnableEvents = False
+'    admin_AccessControl.ListObjects(1).QueryTable.Refresh BackgroundQuery:=False
+'    Application.EnableEvents = True
+'    Set rU = admin_AccessControl.Range("Table_Access_Control").Columns(1)
+'    Set rL = admin_AccessControl.Range("Table_Access_Control").Columns(2)
+'End If
+'Check_Access_Control = Application.Index(rL, Application.Match(sUser, rU, 0))
+'End Function
+
+
+''code for ThisWorkbook module:
+'Option Explicit
+'Option Compare Text
+'
+''automation version number is now aligned to modAuto major versions
+'' --> for any new event handler, increment version to v[N+1].00 and update ThisWorkbook code manually
+'Const ThisWorkbookCodeVer As String = _
+'"ThisWorkbook v4.10"
+''v4.10 2017-02-28 12:01 - added ThisWorkbookVer and ThisWorkbookCodeVer
+''v4.09 2016-06-20 11:09 - added TW_Before/AfterSave
+''v4.00 2016-05-04 16:24 - all event macros held within modAuto
+'
+'Function ThisWorkbookVer() As String
+'ThisWorkbookVer = ThisWorkbookCodeVer
+'End Function
+'
+'Private Sub Workbook_BeforePrint(Cancel As Boolean)
+'Cancel = modAuto.TW_BeforePrint
+'End Sub
+'
+'Private Sub Workbook_BeforeClose(Cancel As Boolean)
+'Cancel = modAuto.TW_BeforeClose
+'End Sub
+'
+'Private Sub Workbook_BeforeSave(ByVal SaveAsUI As Boolean, Cancel As Boolean)
+''v4.09 2016-06-20 11:09 - added TW_BeforeSave
+'Cancel = modAuto.TW_BeforeSave
+'End Sub
+'
+'Private Sub Workbook_AfterSave(ByVal Success As Boolean)
+''v4.09 2016-06-20 11:09 - added TW_AfterSave
+'Call modAuto.TW_AfterSave
+'End Sub
+'
+'Private Sub Workbook_Open()
+'Call modAuto.TW_Open
+'End Sub
+'
+'Sub redo_open()
+''v3.17 2016-04-06 15:00 - called from button on MACROS sheet
+'Workbook_Open
+'End Sub

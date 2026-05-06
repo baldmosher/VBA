@@ -1,0 +1,85 @@
+Attribute VB_Name = "xlSwapColumnRefforTableField"
+Option Explicit
+
+Sub swap_in_formulas_SUMIF_columns_for_table_columns()
+'v1.03 2015-10-30 - bugfix to v1.02
+'v1.02 2015-10-23 - on all sheets
+'v1.01 2015-10-22 - tweak to msgbox timer
+'v1.00 2015-10-01 - first version
+
+'Does a find & replace in all formulas to swap 'Sheet'!$A:$A for Table_Range[FieldName]
+
+'HOW TO USE THIS:
+'1. add new Tables using ODBC to right of old data tables, ALWAYS leave a gap of >=1 columns
+'2. make sure old column headers match the new table headers
+'2a. add any formulas to new table as required
+'3. specify number of sheets & data sheet names & table names to be swapped below
+'4. run it
+
+Dim t As Double
+t = Now
+
+Dim iAC As Integer
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+Application.ScreenUpdating = False
+
+Const smax As Byte = 1                                                'number of sheets
+Dim sSheetName(1 To smax) As String, s As Byte
+Dim sTableName(1 To smax) As String
+
+sSheetName(1) = "Data"                                         'data sheet name
+sTableName(1) = "Table_ExternalData_1"              'data table range name
+
+'sSheetName(2) = "Sessions"
+'sTableName(2) = "Table_ExternalData_13"
+
+Dim a As String, b As String, c As Byte, cmax As Byte, d As Byte, ws As Worksheet
+Dim sOldRef As String, sNewRef As String
+For Each ws In ThisWorkbook.Worksheets
+'on each sheet,
+    For s = 1 To smax
+    'for each source,
+        With Sheets(sSheetName(s))
+        'how many columns in the first (old) table?
+        '!! error here = wrong sheet name probably
+            cmax = .Rows(1).Cells(1).End(xlToRight).Column
+        'what's the first column in the second (new) table?
+            d = .Rows(1).Cells(cmax).End(xlToRight).Column
+        'for each column in first table,
+            For c = 1 To cmax
+            'what's the old column letter?
+                a = Chr(c + 64) 'where Chr(65) = "A" so c = 1 means a = "A"
+            'what's the new field name from this column?
+                b = .Rows(1).Cells(c + d - 1).Value     '-1 adjusts because we want the previous column header
+            'work out the old and new ref
+                sOldRef = "'" & sSheetName(s) & "'" & "!" & "$" & a & ":" & "$" & a  ' so "'2015TD'!$A:$A"
+                sNewRef = sTableName(s) & "[" & b & "]"
+            'do the replace in this ws
+                ws.Cells.Replace What:=sOldRef, Replacement:= _
+                    sNewRef, LookAt:=xlPart, SearchOrder:=xlByRows, _
+                    MatchCase:=False, SearchFormat:=False, ReplaceFormat:=False
+                If InStr(sOldRef, " ") = 0 Then
+                'also do it without the ' marks around the sheet name
+                    ws.Cells.Replace What:=Replace(sOldRef, "'", ""), Replacement:= _
+                        sNewRef, LookAt:=xlPart, SearchOrder:=xlByRows, _
+                        MatchCase:=False, SearchFormat:=False, ReplaceFormat:=False
+                End If
+            Next c  'next column
+        End With
+    Next s  'next source table
+Next ws 'next sheet
+
+t = Now - t  'days
+t = t * 24 * 60 * 60 'secs
+If t > 60 Then
+    MsgBox "Done!" & vbLf & vbLf & "Took " & t / 60 & " mins"
+Else
+    MsgBox "Done!" & vbLf & vbLf & "Took " & t & " secs"
+End If
+
+Application.Calculate
+Application.Calculation = iAC
+Application.ScreenUpdating = True
+End Sub
+

@@ -1,0 +1,25 @@
+Attribute VB_Name = "xlFormatter"
+'xlFormatter
+'v1.00 2016-07-05 10:59
+
+Option Explicit
+
+Sub fmt_NumberApply(ByRef FormatSourceName As String _
+    , Optional TargetIfNotSelection As Range)
+'v1.00 2016-07-05 10:59
+
+'sets standard number formats on Selection.Cells (or Target range), requires
+'single cell Named range with standard number formatting on ActiveSheet,
+'e.g.:
+'   fmt_Pct for percentages
+'   fmt_Num for numbers
+
+'Syntax, run from Immediate pane:
+'   Call fmt_NumberApply("fmt_Pct", Selection)
+
+If TargetIfNotSelection Is Nothing Then Set TargetIfNotSelection = Selection
+Dim rFormatSource As Range
+Set rFormatSource = Range(FormatSourceName)
+TargetIfNotSelection.NumberFormat = rFormatSource.NumberFormat
+
+End Sub

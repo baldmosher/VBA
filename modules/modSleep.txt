@@ -1,0 +1,22 @@
+Attribute VB_Name = "modSleep"
+'paste this into a module (e.g. modAuto) and make Sleep Private not Public
+'Syntax:
+'   Sleep zSleepTime(pthfn)     (time linked to file size)
+'   Sleep zSleepTime            (1000ms)
+
+Public Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As LongPtr)
+
+Private Function zSleepTime(Optional ByVal pthfn As String) As Integer
+Dim dDelay As Double
+Const iDefault As Long = 1000       '1s delay when no pthfn specified
+Const iDivisible As Long = 100000   'sensible divisor to convert bytes into ms delay
+If pthfn = "" Or Dir(pthfn) = "" Then
+    zSleepTime = iDefault
+'ElseIf Dir(pthfn) = "" Then
+'    zSleepTime = iDefault
+Else
+    dDelay = FileLen(pthfn) / iDivisible    'delay in ms based on existing file size
+    zSleepTime = dDelay                     'delay in ms based on existing file size
+End If
+End Function
+

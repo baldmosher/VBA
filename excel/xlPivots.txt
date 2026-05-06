@@ -1,0 +1,840 @@
+Attribute VB_Name = "xlPivots"
+Option Explicit
+Option Compare Text
+
+Private Const cPCInsightSupportEmail As String = "recipient@company.com; recipient@company.com"
+Private Const sAutomationUser As String = "pcinsightvm|pcopsvm"
+
+'Version History:
+Public Const xlPivotsCodeVer As String = _
+"xlPivots v7.18"
+'v7.18 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v7.17 2017-07-05 10:11 - PP_Check_Calculations_Completed: bugfix, drops out as True for non-PP reports
+'v7.16 2017-07-04 08:53 - added last calculation datetime and tweaked process & StatusBar, works with modAuto v5.23
+'v7.15 2017-07-03 16:25 - minor tweak to prevent this overriding existing StatusBar message on VM
+'v7.14 2017-07-03 13:40 - PP_Check_Calculations_Completed: changed calc to SemiAutomatic (stops Excel hanging?)
+'                       - PP_Check_Calculations_Completed: added calc complete % to StatusBar message
+'v7.13 2017-06-30 08:45 - changed order of EnableEvents afterwards to prevent calc loops
+'v7.12 2017-06-29 17:01 - changed to Application.Calculation = xlCalculationAutomatic before checking result
+'v7.11 2017-06-12 10:16 - added notes around IFNA for PP calcs on sheets
+'v7.10 2017-06-08 11:55 - added notes around editing PP data model connections (below version history)
+'v7.09 2017-05-30 12:34 - uses xlBackgroundRefresh.fn_IsPP
+'v7.08 2017-05-24 17:10 - improved StatusBar message logic for PP calcs
+'v7.07 2017-05-10 08:04 - PP_Check_Calculations_Completed: added Options to sheet module code
+'v7.06 2017-02-28 14:57 - PP_Check_Calculations_Completed: made it a function, we can try to use this for scratchpad lists, etc.
+'v7.05 2017-02-28 14:45 - removed hard refs to admin and admin_Validations sheets - prevents xlPivots being used outside automation
+'v7.04 2017-02-27 12:51 - removed hard refs to Validations ranges and Validation Groups sheet - this is no longer mandatory
+'v7.03 2017-02-03 10:53 - added PP_Check_Calculations_Completed, call this from Worksheet_Calculate() event on *ONE* PP report sheet.  IFERROR handlers in formulas will prevent this from working.
+'v7.02 2016-12-02 15:35 - rolled back v8 and v9, didn't really work
+'v7.01 2016-08-19 14:44 - tweaked to allow to run on one sheet
+'v7.00 2016-06-09 15:10 - added Pivots_pf_swap_PageFields
+'v6.05 2016-06-14 09:38 - PageField_SelectGroup improved error handler
+'v6.04 2016-06-10 12:03 - bypasses emails when testing (DoDebug = True)
+'v6.02 2016-06-03 11:59 - bugfix when selecting all
+'v6.01 2016-06-02 15:48 - code cleanup & bugfix
+'v6.00 2016-06-02 13:10 - added Pivots_pf_Add_New_DataField
+'v5.08 2016-06-02 09:38 - improved Groups routine
+'v5.07 2016-05-27 14:13 - improved logic for error handling when pivots not selected
+'v5.06 2016-05-23 16:30 - added BypassWarningLog option to disable email error messages
+'v5.05 2016-04-13 18:03 - added xlPivotsCodeVer function to collect version number from module
+'v5.04 2016-04-07 14:01 - exclusion for pivValidate sheet
+'v5.03 2016-04-07 12:57 - bugfix from v5.03
+'v5.02 2016-04-04 13:53 - addepivot and worksheet name to error email
+'v5.01 2016-03-24 15:54 - added workbook path and name to error email
+'v5.00 2016-02-02 11:06 - added Pivots_pf_swap_RowFields
+'v4.00 2016-01-08 17:47 - added Pivots_Autonumber_Pivots_on_Sheet
+'v3.02 2015-12-23 14:34 - added code version, improved error reports
+'v3.01 2015-12-15 15:38 - bugfix when failing to select in Pivots_Single
+'v3.00 2015-11-18 10:32 - added Pivots_Hide_Sheets
+'v2.00 2015-11-10 13:50 - added Pivots_Hide_Errors
+'v1.01 2015-10-26 10:21 - bugfix for excluded pivots
+
+
+
+'Sub test_code_to_manipulate_PP_connections()
+''v7.10 2017-06-08 11:55 - added notes around editing PP data model connections (below version history)
+''Source: https://wordpress.training-nyc.com/vba/macro-to-change-powerpivot-data-connection/
+''NOTE: This is not possible once you have edited a Connection through PP add-in (including renaming the model tab).
+''      At that point, the Connection is made read-only from Excel & VBA perspective.
+''Also see: https://social.msdn.microsoft.com/Forums/sqlserver/en-US/7ca8357a-ba39-496e-a4fb-fab5bdcdc2ab/using-vba-to-add-or-change-power-pivot-data-connection?forum=sqlkjpowerpivotforexcel&prof=required
+'
+'    Dim mdl As ModelTable
+'    Dim wcon As WorkbookConnection
+'    Dim cmd As String
+'
+'    Set mdl = ActiveWorkbook.Model.ModelTables("Fct_Test_Table")
+'    'cmd =
+'    Debug.Print "CommandType: " & mdl.SourceWorkbookConnection.OLEDBConnection.CommandType  'always 6?
+'    Debug.Print "CommandText: " & mdl.SourceWorkbookConnection.OLEDBConnection.CommandText
+''This property is read-only once edited through PP add-in:
+'    mdl.SourceWorkbookConnection.OLEDBConnection.CommandText = Replace(cmd, "_TEST", "")
+'    mdl.Refresh
+'
+'End Sub
+'
+'Sub test_PP_Replace_Connection()
+''v7.10 2017-06-08 11:55 - added notes around editing PP data model connections (below version history)
+''Source: https://wordpress.training-nyc.com/vba/macro-to-change-powerpivot-data-connection/
+''NOTE: This is not possible once you have edited a Connection through PP add-in (including renaming the model tab).
+''      At that point, the Connection is made read-only from Excel & VBA perspective.
+''Also see: https://social.msdn.microsoft.com/Forums/sqlserver/en-US/7ca8357a-ba39-496e-a4fb-fab5bdcdc2ab/using-vba-to-add-or-change-power-pivot-data-connection?forum=sqlkjpowerpivotforexcel&prof=required
+'
+'    Dim mdl As ModelTable
+'    Dim wcon As WorkbookConnection
+'    Dim cmd As String
+'
+'    'Set mdl = ThisWorkbook.Model.ModelTables("PandC_Sandpit Query1")
+'    'cmd =
+'    'Debug.Print "CommandType: " & mdl.SourceWorkbookConnection.OLEDBConnection.CommandType  'always 6?
+'    'Debug.Print "CommandText: " & mdl.SourceWorkbookConnection.OLEDBConnection.CommandText
+''This property is read-only once edited through PP add-in:
+'    'mdl.SourceWorkbookConnection.OLEDBConnection.CommandText = "EXEC [PandC_Sandpit].[PC].[SEL_PandC_Comp_Index]"
+'    'Debug.Print mdl.SourceName
+'    'mdl.SourceName "Model Name_TEST"
+'    'Debug.Print mdl.SourceWorkbookConnection
+'    'Debug.Print mdl.SourceWorkbookConnection.OLEDBConnection.Connection
+'    'mdl.Refresh
+'
+'    Const sOldCommandText As String = "EXEC [PandC_Sandpit].[PC].[SEL_PandC_Bookings_TEST]"
+'    Const sNewCommandText As String = "EXEC [PandC_Sandpit].[PC].[SEL_PandC_Bookings]"
+'    Dim i As Integer
+'    Dim sNameOfOldTable As String
+'    Set mdl = Nothing
+'    For i = 1 To ThisWorkbook.Model.ModelTables.Count
+'        Debug.Print ThisWorkbook.Model.ModelTables(i).SourceWorkbookConnection.OLEDBConnection.CommandText
+'        If ThisWorkbook.Model.ModelTables(i).SourceWorkbookConnection.OLEDBConnection.CommandText = sOldCommandText Then
+'            Set mdl = ThisWorkbook.Model.ModelTables(i)
+'            sNameOfOldTable = mdl.Name
+'            Exit For
+'        End If
+'        If ThisWorkbook.Model.ModelTables(i).Name = "Bookings" Then
+'            Debug.Print ThisWorkbook.Model.ModelTables(i).ModelTableColumns.Count
+'            Set mdl = ThisWorkbook.Model.ModelTables(i)
+'            sNameOfOldTable = mdl.Name
+'            Exit For
+'        End If
+'    Next i
+'
+'    Const sPandC_SandpitConnection As String = "Provider=SQLOLEDB.1;Integrated Security=SSPI;Persist Security Info=True;Initial Catalog=PandC_Sandpit;Data Source=bi-01;Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096;Workstation ID=988XP32;Use Encryption for Data=False;Tag with column collation when possible=False"
+'    Dim sNameOfNewTable As String
+'    ThisWorkbook.Connections.Add2 Replace(sNewCommandText, "EXEC", "BI-01"), "Added automatically by PP_Replace_Connection " & Format(Now, "yyyy-mm-dd hh:nn:ss") _
+'        , sPandC_SandpitConnection, sNewCommandText, 2, True, True
+'    sNameOfNewTable = ThisWorkbook.Model.ModelTables(ThisWorkbook.Model.ModelTables.Count)
+'
+'    Sheets("TS by DAY").Replace "[" & sNameOfOldTable & "].", "[" & sNameOfNewTable & "]."
+'End Sub
+
+
+Function xlPivotsVer() As String
+xlPivotsVer = xlPivotsCodeVer
+End Function
+
+Sub PivotFilters_Reset(Optional ByVal DoAllPossiblePivots As Boolean)
+'v7.05 2017-02-28 14:45 - removed hard refs to admin and admin_Validations sheets - prevents xlPivots being used outside automation
+'v7.04 2017-02-27 12:51 - removed hard refs to Validations ranges - this is no longer mandatory
+'v6.01 2016-06-02 13:22 - code cleanup
+'v5.04 2016-04-07 14:01 - exclusion for pivValidate sheet
+'v1.01 2015-10-26 10:21 - bugfix for excluded pivots
+'resets all Pivots in scope for filtering
+'much faster if you set all pivots to ManualUpdate first
+'may be faster if you disable Calculations first
+
+On Error Resume Next
+
+Dim iAC As Integer, bASU As Boolean, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+Dim ws As Worksheet, pt As PivotTable, pf As PivotField, rval As Range, x As Byte, ttc As Double
+ttc = Now
+For Each ws In ThisWorkbook.Worksheets
+If ws.Name <> "pivValidate" Then
+    For Each pt In ws.PivotTables
+    'check PivotTable name against EXclusions list
+        Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Excluded")
+        If rval Is Nothing Then GoTo ErrorHandler
+        x = 0
+        x = Application.Match(pt.Name, rval, 0)
+        If x = 0 Then
+        'check PivotTable name against INclusions list
+            If DoAllPossiblePivots Then
+            'just do it anyway
+                x = 1
+            Else
+                'On Error Resume Next   'already resuming next!
+                Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Filtered")
+                If rval Is Nothing Then GoTo ErrorHandler
+                x = Application.Match(pt.Name, rval, 0)
+                'On Error GoTo 0        'don't cancel it!
+            End If
+        End If
+        If x > 0 Then
+        'PivotTable found in validation list
+            'first, reset all PageFields in validation list
+            '(this is needed for a single filter option, but not for multiple filters)
+            Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_PageFields")
+            If rval Is Nothing Then GoTo ErrorHandler
+            For x = 1 To rval.Cells.Count
+                Set pf = pt.PageFields(rval.Cells(x).Text)
+                If Not pf Is Nothing Then Call PageField_Clear(pf)
+            Next x
+            x = 0
+        End If
+    Next pt
+End If
+Next ws
+If ThisWorkbook.Sheets("admin").DoDebug Then Debug.Print "Time to clear pivots: " & (Now - ttc) * 24 * 60 * 60 & "s"
+CleanUp:
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+Exit Sub
+
+ErrorHandler:
+Dim pp As String, tt As String
+pp = "Error in PivotFilters_Reset"
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & pt.Name & " in sheet " & ws.Name & " in report " & ThisWorkbook.FullName
+GoTo CleanUp
+End Sub
+
+Function Pivots_Single(ByVal sItemToSelect As String, ByVal sPageFieldName As String _
+    , Optional ByVal DoAllPossiblePivots As Boolean _
+    , Optional ByVal BypassWarningLog As Boolean) As Boolean
+'allows selection for e.g. "Team A" or "Team F - Daphne" in all listed pivots (if PageField is found)
+'[optionally] will filter ALL pivots with the selected field present, useful for e.g. LW/L4W
+'--> in this case, for any formulas requiring independent lookups, e.g. Web Bookings, you
+'   should have dedicated pivots without those filters present, to avoid incorrect filtering
+'v7.05 2017-02-28 14:45 - removed hard refs to admin and admin_Validations sheets - prevents xlPivots being used outside automation
+'v7.04 2017-02-27 12:51 - removed hard refs to Validations ranges - this is no longer mandatory
+'v6.04 2016-06-10 12:03 - bypasses emails when testing (DoDebug = True)
+'v6.03 2016-06-06 12:20 - added option to select "*NOT*Something" in pivots
+'v6.02 2016-06-03 11:59 - bugfix when selecting all
+'v6.01 2016-06-02 13:22 - code cleanup
+'v5.07 2016-05-27 14:13 - improved logic for error handling when pivots not selected
+'v5.06 2016-05-23 16:30 - added BypassWarningLog option to disable email error messages
+'v5.04 2016-04-07 14:01 - exclusion for pivValidate sheet
+'v3.02 2015-12-23 14:34 - added code version, improved error reports
+'v3.01 2015-12-15 15:38 - bugfix when failing
+'v3.00 2015-10-15 10:09 - rebuilt to work with all pivots with the same field name
+'!! Slicers MASSIVELY slow this down, as it forces pivot update after each and every item selection !!
+'requires the following validation ranges created on thisworkbook.sheets("Validations") sheet:
+'   "val_Pivots_PageFields"     - list of PageFields to be cleared first
+'   "val_Pivots_Filtered"       - list of PivotTables to be filtered on sPageFieldName
+'   "valg_" & sPageFieldName    - list of grouped items to be filtered on sPageFieldName
+
+On Error Resume Next
+
+
+Dim iAC As Integer, bASU As Boolean, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+Dim rval As Range, sItem() As String, i As Integer
+Dim ws As Worksheet, pt As PivotTable, pf As PivotField, pi As PivotItem, bShowIt As Boolean
+Dim tf As Double
+
+Dim x As Byte, c As Byte, e As Byte
+Dim pp As String, tt As String
+
+For Each ws In ThisWorkbook.Sheets
+If ws.Name <> "pivValidate" Then
+    For Each pt In ws.PivotTables
+
+    'check PivotTable name against exclusions list
+        Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Excluded")
+        If rval Is Nothing Then GoTo ErrorHandler
+        x = 0
+        x = Application.Match(pt.Name, rval, 0)
+        If x = 0 Then
+        'check PivotTable name against inclusions list
+            If DoAllPossiblePivots Then
+            'don't check, just do it anyway
+                x = 1
+            Else
+                x = 0
+                'On Error Resume Next   'already resuming next!
+                Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Filtered")
+                If rval Is Nothing Then GoTo ErrorHandler
+                x = Application.Match(pt.Name, rval, 0)
+                'On Error GoTo 0        'don't cancel Resume Next!
+            End If
+            If x > 0 Then
+            'filter this pivot table, if this PageField is available for filtering
+                x = 0
+                tf = Now    'timer
+                If ThisWorkbook.Sheets("admin").DoDebug Then Debug.Print "Filtering pivot " & pt.Name & " on " & ws.Name & " to " & sItemToSelect
+            'now, look for the chosen PageField and filter it to the chosen group
+                Set pf = pt.PageFields(sPageFieldName)
+                If Not pf Is Nothing Then
+                'update filter in PageField to match chosen item
+                    c = c + 1
+                    pf.ClearAllFilters
+                    If sItemToSelect = "(All)" Then
+                    'do nothing, it's already selected
+                    ElseIf Left(sItemToSelect, 5) = "*NOT*" Then
+                        pf.EnableMultiplePageItems = True
+                        pf.PivotItems(Mid(sItemToSelect, 6, Len(sItemToSelect) - 5)).Visible = False
+                    Else
+                        pf.EnableMultiplePageItems = False
+                        pf.CurrentPage = sItemToSelect  'this will fail if it can't select it
+                        If pf.CurrentPage <> sItemToSelect Then GoTo ErrorHandlerNotSelected  'fails
+                    End If
+                    If ThisWorkbook.Sheets("admin").DoDebug Then Debug.Print "Time to filter " & pf.Name & ": " & (Now - tf) * 24 * 60 * 60 & "s"
+                End If
+            End If
+            If Not ThisWorkbook.Sheets("admin").DoDebug Then Application.StatusBar = Application.StatusBar & "."
+        End If
+NextPT:
+    Next pt
+End If
+Next ws
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+If c > 0 And e = c Then GoTo ErrorHandlerNoneFiltered
+Pivots_Single = True
+CleanUp:
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+Exit Function
+
+ErrorHandlerNotSelected:
+e = e + 1
+GoTo NextPT
+
+ErrorHandlerNoneFiltered:
+pp = "Error in selecting " & sItemToSelect & " in " & sPageFieldName
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If BypassWarningLog = False And Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & pt.Name & " in sheet " & ws.Name & " in report " & ThisWorkbook.FullName
+GoTo CleanUp
+
+ErrorHandler:
+pp = "Error in Pivots_Single"
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If BypassWarningLog = False And Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & pt.Name & " in sheet " & ws.Name & " in report " & ThisWorkbook.FullName
+GoTo CleanUp
+End Function
+
+Function Pivots_Group(ByVal sGroupToSelect As String, ByVal sPageFieldName As String _
+    , Optional DoAllPossiblePivots As Boolean _
+    , Optional ByVal BypassWarningLog As Boolean) As Boolean
+'allows multiple selections for e.g. "all Spain" in all listed pivots (if PageField is found)
+'v7.05 2017-02-28 14:45 - removed hard refs to admin and admin_Validations sheets - prevents xlPivots being used outside automation
+'v7.04 2017-02-27 12:51 - removed hard refs to Validations ranges and Validation Groups sheet - this is no longer mandatory
+'v6.04 2016-06-10 12:03 - bypasses emails when testing (DoDebug = True)
+'v6.01 2016-06-02 15:48 - code cleanup & bugfix
+'v5.08 2016-06-02 09:22 - added DoAllPossiblePivots
+'v5.06 2016-05-23 16:30 - added BypassWarningLog option to disable email error messages
+'v5.04 2016-04-07 14:01 - exclusion for pivValidate sheet
+'v3.02 2015-12-23 14:34 - added code version, improved error reports
+'v3.00 2015-10-15 10:09 - rebuilt to work with all pivots with the same field name
+'!! Slicers MASSIVELY slow this down, as it forces pivot update after each and every item selection !!
+'requires the following validation ranges created on thisworkbook.sheets("Validations") sheet:
+'   "val_Pivots_PageFields"     - list of PageFields to be cleared first
+'   "val_Pivots_Filtered"       - list of PivotTables to be filtered on sPageFieldName
+'   "valg_" & sPageFieldName    - list of grouped items to be filtered on sPageFieldName
+
+On Error Resume Next
+ 
+Dim iAC As Integer, bASU As Boolean, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+Dim rval As Range, rFilt As Range, sItem() As String, i As Integer
+Dim ws As Worksheet, pt As PivotTable, pf As PivotField, pi As PivotItem, bShowIt As Boolean
+Dim tf As Double
+
+With ThisWorkbook.Sheets("Validation Groups")
+    Set rFilt = .Range("valg_" & sPageFieldName)
+    If rFilt Is Nothing Then GoTo ErrorHandler
+    Set rFilt = rFilt.Cells(Application.Match(sGroupToSelect, rFilt, 0))
+    If rFilt.End(xlDown).Row > 10000 Then GoTo ErrorHandler
+    Set rFilt = .Range(rFilt.Offset(1), rFilt.End(xlDown))
+End With
+
+Dim x As Byte
+For Each ws In ThisWorkbook.Sheets
+If ws.Name <> "pivValidate" Then
+    For Each pt In ws.PivotTables
+        If pt.ManualUpdate = False Then pt.ManualUpdate = True
+    'check PivotTable name against exclusions list
+        Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Excluded")
+        If rval Is Nothing Then GoTo ErrorHandler
+        x = 0
+        x = Application.Match(pt.Name, rval, 0)
+        If x = 0 Then
+        'check PivotTable name against inclusions list
+            If DoAllPossiblePivots Then
+            'don't check, just do it anyway
+                x = 1
+            Else
+                x = 0
+                'On Error Resume Next   'already resuming next!
+                Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_Filtered")
+                If rval Is Nothing Then GoTo ErrorHandler
+                x = Application.Match(pt.Name, rval, 0)
+                'On Error GoTo 0        'don't cancel Resume Next!
+            End If
+            If x > 0 Then
+            'PivotTable found in validation list
+                tf = Now
+                If ThisWorkbook.Sheets("admin").DoDebug Then Debug.Print "Filtering pivot " & pt.Name & " on " & ws.Name
+            'first, reset all PageFields in validation list
+            '(this is needed for a single filter option, but not for multiple filters)
+                Set rval = ThisWorkbook.Sheets("Validations").Range("val_Pivots_PageFields")
+                If rval Is Nothing Then GoTo ErrorHandler
+                For x = 1 To rval.Cells.Count
+                    Set pf = Nothing
+                    Set pf = pt.PageFields(rval.Cells(x).Text)
+                    If Not pf Is Nothing Then Call PageField_Clear(pf)
+                Next x
+                x = 0
+            'now, look for the chosen PageField and filter it to the chosen group
+                Set pf = pt.PageFields(sPageFieldName)
+                If Not pf Is Nothing Then
+                'update filters in PageField to match items in group
+                    If rFilt.Cells.Count = 1 Then
+                    'just captures possibility of 1 item in group
+                        pf.CurrentPage = rFilt.Cells(1)
+                    Else
+                    'select multiple items
+                        Call PageField_SelectGroup(sGroupToSelect, pf)
+                    End If
+                    If ThisWorkbook.Sheets("admin").DoDebug Then Debug.Print "Time to filter " & pf.Name & ": " & (Now - tf) * 24 * 60 * 60 & "s"
+                End If
+            End If
+        End If
+        If Not ThisWorkbook.Sheets("admin").DoDebug Then Application.StatusBar = Application.StatusBar & "."
+    Next pt
+End If
+Next ws
+Pivots_Group = True
+CleanUp:
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+Exit Function
+
+ErrorHandler:
+Dim pp As String, tt As String
+pp = "Error in selecting multiple items in " & pf.Name
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If BypassWarningLog = False And Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & pt.Name & " in sheet " & ws.Name & " in report " & ThisWorkbook.FullName
+GoTo CleanUp
+End Function
+
+Function PageField_Clear(ByRef pf As PivotField)
+'v6.01 2016-06-02 13:47 - code cleanup
+'resets PageField to (All)
+Dim bMult As Boolean
+bMult = pf.EnableMultiplePageItems
+pf.ClearAllFilters
+If pf.ShowAllItems = False Then pf.ShowAllItems = True
+If pf.EnableMultiplePageItems = True Then pf.EnableMultiplePageItems = False
+pf.ShowAllItems = True
+If pf.CurrentPage <> "(All)" Then pf.CurrentPage = "(All)"
+pf.EnableMultiplePageItems = bMult
+End Function
+
+Function PageField_SelectGroup(ByVal sGroupToSelect As String, ByVal pf As PivotField _
+    , Optional ByVal BypassWarningLog As Boolean) As Boolean
+'allows multiple selections for e.g. "all Spain" in one PivotField
+'v7.05 2017-02-28 14:45 - removed hard refs to admin and admin_Validations sheets - prevents xlPivots being used outside automation
+'v7.04 2017-02-27 12:51 - removed hard refs to Validation Groups sheet - this is no longer mandatory
+'v6.05 2016-06-14 09:38 - improved error handler
+'v6.04 2016-06-10 12:03 - bypasses emails when testing (DoDebug = True)
+'v6.01 2016-06-02 13:22 - code cleanup
+'v5.08 2016-06-02 09:36 - added debug timer
+'v5.06 2016-05-23 16:30 - added BypassWarningLog option to disable email error messages
+'v3.02 2015-12-23 14:34 - added code version, improved error reports
+'v2.06 2015-09-24 13:36 - v4c bugfixes and improvements
+
+On Error GoTo ErrorHandler
+
+If pf Is Nothing Or sGroupToSelect = "" Then Exit Function
+
+Dim iAC As Integer, bASU As Boolean, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+Dim rval As Range, sItem() As String, i As Integer, pi As PivotItem, bShowIt As Boolean, iFailed As Integer
+With ThisWorkbook.Sheets("Validation Groups")
+    Set rval = .Range("valg_" & pf)
+    If rval Is Nothing Then GoTo ErrorHandler
+    Set rval = rval.Cells(Application.Match(sGroupToSelect, rval, 0))
+    If rval.End(xlDown).Row > 10000 Then GoTo ErrorHandler
+    Set rval = .Range(rval.Offset(1), rval.End(xlDown))
+End With
+
+Dim bFirstSelected As Boolean
+If rval.Cells.Count = 1 Then
+'just captures possibility of 1 item in list
+    pf.ClearAllFilters
+    If pf.ShowAllItems = False Then pf.ShowAllItems = True
+    pf.EnableMultiplePageItems = False
+    pf.CurrentPage = rval.Cells(1)
+Else
+    pf.ClearAllFilters
+    If pf.ShowAllItems = False Then pf.ShowAllItems = True
+'always EnableMultiplePageItems for this field
+    If pf.EnableMultiplePageItems = False Then pf.EnableMultiplePageItems = True
+    ReDim sItem(1 To rval.Cells.Count) As String
+    bShowIt = False
+    For i = 1 To rval.Cells.Count
+        sItem(i) = rval.Cells(i)
+    Next i
+    For Each pi In pf.PivotItems
+    'check if this item is present and if it should be visible against list
+        bShowIt = False
+        For i = 1 To rval.Cells.Count
+            If pi = sItem(i) Then
+                bShowIt = True
+            End If
+        Next i
+    'show it if needed
+        If pi.Visible = Not bShowIt Then pi.Visible = bShowIt
+    Next pi
+End If
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+PageField_SelectGroup = True
+Exit Function
+
+ErrorHandler:
+'this shouldn't be invoked!
+iFailed = iFailed + 1
+If iFailed < rval.Cells.Count Then Resume Next  'drop out if all have failed
+Dim pp As String, tt As String
+pp = "Error: couldn't select any of " & iFailed & " items in " & pf.Name & " in " & pf.Parent.Name & " on " & pf.Parent.Parent.Name
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If BypassWarningLog = False And Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & " in sheet " & " in report " & ThisWorkbook.FullName
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+End Function
+
+Function PageField_SelectGroup_OLAP_TEST(ByVal sGroupToSelect As String, ByVal pf As PivotField _
+    , Optional ByVal BypassWarningLog As Boolean) As Boolean
+'allows multiple selections for e.g. "all Spain" in one PivotField
+'vX.00 2016-06-02 09:36 - testing with Arrays - doesn't work without OLAP pivots e.g. cube, PowerPivot
+
+'On Error GoTo ErrorHandler
+
+Dim iAC As Integer, bASU As Boolean, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+'PageField_SelectGroup_TEST "Team A", Sheets("pivBook").PivotTables("pivBook").PivotFields("Destination")
+Dim rval As Range, sItem() As String, i As Integer, j As Integer, pi As PivotItem, bShowIt As Boolean
+With ThisWorkbook.Sheets("Validation Groups")
+    Set rval = .Range("valg_" & pf)
+    If rval Is Nothing Then GoTo ErrorHandler
+    Set rval = rval.Cells(Application.Match(sGroupToSelect, rval, 0))
+    If rval.End(xlDown).Row > 10000 Then GoTo ErrorHandler
+    Set rval = .Range(rval.Offset(1), rval.End(xlDown))
+End With
+Application.EnableEvents = False
+
+Dim sc As SlicerCache
+'Dim sL As SlicerCacheLevel
+Dim aArray() As Variant
+Dim v As Integer
+
+Set sc = ThisWorkbook.SlicerCaches("Slicer_Destination")
+'Set sL = sC.SlicerCacheLevels(1) 'this will start with the first item in the slicer
+'sC.SlicerCacheLevels.Count
+j = 0
+With sc
+    For i = 1 To .SlicerItems.Count
+        For v = 1 To rval.Cells.Count
+            If .SlicerItems(i).Name = rval.Cells(v) Then
+                ReDim Preserve aArray(0 To j) As Variant
+                aArray(j) = .SlicerItems(i).Name
+                j = j + 1
+            End If
+        Next v
+    Next i
+    .VisibleSlicerItemsList = aArray 'this set the visible items
+                                        '= to the array you just created
+End With
+
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+PageField_SelectGroup_OLAP_TEST = True
+Exit Function
+
+ErrorHandler:
+Dim pp As String, tt As String
+pp = "Error in selecting multiple items in " & pf.Name
+MsgBox pp & ", contact P&C Insight for support", vbExclamation, xlPivotsCodeVer
+If BypassWarningLog = False And Not ThisWorkbook.Sheets("admin").DoDebug Then modEmail.SendEmail cPCInsightSupportEmail, , , xlPivotsCodeVer & " error report", pp & " in pivot " & " in sheet " & " in report " & ThisWorkbook.FullName
+Application.EnableEvents = bAEE
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+End Function
+
+Sub Pivots_Hide_Errors(ByVal TrueHides As Boolean)
+'v2.00 2015-11-10 13:50 - added Pivots_Hide_Errors
+'any error results in pivottables set to show as ""
+Dim ws As Worksheet
+Dim pt As PivotTable
+For Each ws In ActiveWorkbook.Worksheets
+ws.Visible = True
+ws.Select
+For Each pt In ws.PivotTables
+    pt.DisplayErrorString = TrueHides
+Next pt
+Next ws
+End Sub
+
+Sub Pivots_Hide_Sheets(ByVal TrueHides As Boolean)
+'v3.00 2015-11-18 10:32 - added Pivots_Hide_Sheets
+'any sheet with a pivottable set to visible/hidden
+Dim ws As Worksheet
+Dim pt As PivotTable
+For Each ws In ActiveWorkbook.Worksheets
+For Each pt In ws.PivotTables
+    If ws.Visible = TrueHides Then ws.Visible = Not TrueHides
+Next pt
+Next ws
+End Sub
+
+Sub Pivots_Autonumber_Pivots_on_Sheet(Optional ByVal sPivotNameToBeNumbered As String _
+    , Optional ByRef wsSheet As Worksheet)
+'v4.00 2016-01-08 17:47 - added Pivots_Autonumber_Pivots_on_Sheet
+'will automatically number pivot tables on sheet sequentially
+Dim pt As PivotTable, i As Integer, p As Byte
+If wsSheet Is Nothing Then Set wsSheet = ActiveSheet
+p = wsSheet.PivotTables.Count
+If p = 0 Then
+    MsgBox "No pivots on " & wsSheet.Name & ", try again", vbExclamation, ""
+    Exit Sub
+End If
+If sPivotNameToBeNumbered = "" Then
+    sPivotNameToBeNumbered = "pt" & wsSheet.Name
+    Dim pp As String
+    If p > 1 Then
+        pp = "Is this pivot table name prefix OK?  If not change it." & vbLf & "This prefix will be appended with 1 thru " & p & ", " & vbLf & "e.g. " & sPivotNameToBeNumbered & 1 & ", etc."
+    Else
+        pp = "Is this pivot table name OK?  If not change it."
+    End If
+    sPivotNameToBeNumbered = InputBox(pp, "", sPivotNameToBeNumbered)
+    If sPivotNameToBeNumbered = "" Then Exit Sub    'cancelled
+End If
+For Each pt In wsSheet.PivotTables
+    i = i + 1
+    pt.Name = sPivotNameToBeNumbered & i
+Next pt
+End Sub
+
+Sub Pivots_pf_swap_RowFields(ByVal sOldField As String, sNewField As String _
+    , Optional ByRef wsSheet As Worksheet)
+'v5.00 2016-02-02 11:06 - added Pivots_pf_swap_RowFields
+'will quickly swap RowFields in/out on ActiveSheet (or ws if specified)
+'NB: will be very slow if Slicers are connected to pivots
+Dim b As Byte, pt As PivotTable, pf As PivotField
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
+If wsSheet Is Nothing Then Set wsSheet = ActiveSheet
+For Each pt In wsSheet.PivotTables
+On Error Resume Next
+    b = pt.PivotFields(sOldField).Position
+    Set pf = pt.RowFields(sOldField)
+    pt.RowFields(sOldField).Orientation = xlHidden
+    pt.PivotFields(sNewField).Orientation = xlRowField
+    pt.PivotFields(sNewField).Position = b
+NextPivot:
+On Error GoTo 0
+Next pt
+Application.ScreenUpdating = True
+Application.Calculation = xlCalculationSemiautomatic
+End Sub
+
+
+Sub Pivots_pf_swap_PageFields(ByVal sOldField As String, sNewField As String _
+    , Optional ByRef wsSheet As Worksheet, Optional SetToValue)
+'v7.00 2016-06-09 15:10 - added Pivots_pf_swap_PageFields
+'will quickly swap PageFields in/out on ActiveSheet (or ws if specified)
+'NB: will be very slow if Slicers are connected to pivots
+Dim b As Byte, pt As PivotTable, pf As PivotField
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
+If wsSheet Is Nothing Then Set wsSheet = ActiveSheet
+For Each pt In wsSheet.PivotTables
+On Error Resume Next
+    b = pt.PivotFields(sOldField).Position
+    Set pf = pt.PageFields(sOldField)
+    pt.PageFields(sOldField).Orientation = xlHidden
+    pt.PivotFields(sNewField).Orientation = xlPageField
+    pt.PivotFields(sNewField).Position = b
+    If SetToValue <> "" Then pt.PivotFields(sNewField).CurrentPage = SetToValue
+NextPivot:
+On Error GoTo 0
+Next pt
+Application.ScreenUpdating = True
+Application.Calculation = xlCalculationSemiautomatic
+End Sub
+
+Sub Pivots_pf_Add_New_DataField(ByVal ExistingDFToCheck As String _
+    , ByVal AddThisDF As String, ByVal SwapOutExisting As Boolean _
+    , Optional ByRef JustOneWorksheet As Worksheet)
+'v7.01 2016-08-19 14:44 - tweaked to allow to run on one sheet
+'v6.00 2016-06-02 13:10 - added Pivots_pf_Add_New_DataField
+'looks for an existing DataField in pivot, adds another DataField alongside it
+'optionally removes the existing DataField at the same time
+Dim ws As Worksheet, pt As PivotTable, pf As PivotField
+For Each ws In Worksheets
+    If Not JustOneWorksheet Is Nothing Then
+        If ws.Name <> JustOneWorksheet.Name Then GoTo NextWS
+    ElseIf ws.Name = "pivValidate" Then
+        GoTo NextWS
+    ElseIf Left(ws.Name, 3) <> "piv" Then
+        GoTo NextWS
+    End If
+    For Each pt In ws.PivotTables
+        For Each pf In pt.DataFields
+           If Right(pf.Name, Len(ExistingDFToCheck)) = ExistingDFToCheck Then
+                If SwapOutExisting Then
+                    If pf.Orientation <> xlHidden Then pf.Orientation = xlHidden
+                End If
+                If AddThisDF <> "" Then
+                    Set pf = pt.PivotFields(AddThisDF)
+                    If pf.Orientation = xlHidden Then pt.AddDataField pf, , xlSum
+                End If
+                Exit For
+            End If
+        Next pf
+    Next pt
+NextWS:
+Next ws
+End Sub
+
+Sub Pivots_Clean_Empty_Rows_And_Columns()
+Dim ws As Worksheet, pt As PivotTable, rTR As Range, r As Range
+For Each ws In Worksheets
+    If ws.PivotTables.Count = 1 Then
+        With ws
+            Set rTR = .PivotTables(1).TableRange2
+        'delete empty columns to right of table
+            Set r = rTR.Columns(rTR.Columns.Count).Offset(0, 1).EntireColumn
+            Set r = .Range(r, r.End(xlToRight))
+            If Application.CountA(r) = 0 Then r.Delete
+        'delete empty rows below table
+            Set r = rTR.Rows(rTR.Rows.Count).Offset(1, 0).EntireRow
+            Set r = .Range(r, r.End(xlDown))
+            If Application.CountA(r) = 0 Then r.Delete
+        End With
+    End If
+Next ws
+MsgBox "Done - now save to shrink file"
+End Sub
+
+Function PP_Check_Calculations_Completed() As Boolean
+'v7.18 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v7.17 2017-07-05 10:11 - bugfix, drops out as True for non-PP reports
+'v7.16 2017-07-04 08:53 - added last calculation datetime and tweaked process & StatusBar, works with modAuto v5.23
+'v7.15 2017-07-03 16:25 - minor tweak to prevent this overriding existing StatusBar message on VM
+'v7.14 2017-07-03 13:40 - changed calc to SemiAutomatic (stops Excel hanging?)
+'                       - added calc complete % to StatusBar message
+'v7.13 2017-06-30 08:45 - changed order of EnableEvents afterwards to prevent calc loops
+'v7.12 2017-06-29 17:01 - changed to Application.Calculation = xlCalculationAutomatic before checking result
+'v7.11 2017-06-12 10:16 - added notes around IFNA for PP calcs on sheets
+'v7.09 2017-05-30 12:34 - uses xlBackgroundRefresh.fn_IsPP
+'v7.08 2017-05-24 17:10 - improved StatusBar message logic
+'v7.07 2017-05-10 08:04 - added Options to sheet module code
+'v7.06 2017-02-28 14:57 - made it a function, we can try to use this for scratchpad lists, etc.
+'v7.03 2017-02-03 10:53 - added PP_Check_Calculations_Completed, call this from Worksheet_Calculate() event on *ONE* PP report sheet.  IFERROR handlers in formulas will prevent this from working.
+'use the below for ensuring PP calcs are completed on ONE worksheet:
+    'Option Explicit
+    'Option Compare Text
+    '
+    'Private Sub Worksheet_Calculate()
+    ''add this to ONE PP report sheet and use IFNA formulas for CUBEVALUE (not IFERROR)
+    'Call xlPivots.PP_Check_Calculations_Completed
+    'End Sub
+If xlBackgroundRefresh.fn_IsPP = False Then
+'only necessary to do this for PP calcs
+    PP_Check_Calculations_Completed = True
+    Exit Function
+End If
+On Error Resume Next
+Application.EnableEvents = False
+If Application.Calculation <> xlCalculationAutomatic Then Application.Calculation = xlCalculationAutomatic
+Dim ws As Worksheet, i As Long
+For Each ws In Worksheets
+    i = i + WorksheetFunction.CountIf(ws.Cells, "#GETTING_DATA")
+Next ws
+Dim wsA As Worksheet, rPPtot As Range, rPPnow As Range, rPPcalc, pcComp As Double
+Set wsA = ThisWorkbook.Sheets("admin")
+If Not wsA Is Nothing Then
+'set Count Total cell
+    Set rPPtot = wsA.Range("admin_PPtot")
+    If rPPtot Is Nothing Then
+    'create header
+        Set rPPtot = wsA.Range("admin_ConnTime").Offset(0, 2)
+        rPPtot = "PP cells"
+        rPPtot.Interior.ColorIndex = 44
+        rPPtot.Font.Bold = True
+    'create Total cell
+        Set rPPtot = rPPtot.Offset(1)
+        ThisWorkbook.Names.Add "admin_PPtot", rPPtot
+    End If
+    If rPPtot < i Then rPPtot = i   'extend total until it's probably complete (delete the value to reset it)
+'set Count Now cell
+    Set rPPnow = wsA.Range("admin_PPnow")
+    If rPPnow Is Nothing Then
+    'create Now cell
+        Set rPPnow = rPPtot.Offset(1)
+        ThisWorkbook.Names.Add "admin_PPnow", rPPnow
+    End If
+    If rPPnow <> i Then rPPnow = i
+'set Calc Time cell (records last time it calculated - must leave 30s between calculations)
+    Set rPPcalc = wsA.Range("admin_PPcalc")
+    If rPPcalc Is Nothing Then
+    'create Calc cell
+        Set rPPcalc = rPPnow.Offset(1)
+        ThisWorkbook.Names.Add "admin_PPcalc", rPPcalc
+    End If
+    If rPPcalc.NumberFormat <> "yyyy-mm-dd hh:mm:ss" Then rPPcalc.NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    If rPPcalc.EntireColumn.ColumnWidth <> 17.57 Then rPPcalc.EntireColumn.ColumnWidth = 17.57
+'are we done yet?
+    If i > 0 Then
+    'still calculating PP
+        rPPcalc.Value = Now
+        pcComp = 1 - (rPPnow / rPPtot)  'this is empty if there's no admin sheet
+        If InStr(sAutomationUser, Environ("Username")) = 0 Then Application.StatusBar = "Calculating, please be patient... " & Format(pcComp, "#.#%")     'change StatusBar
+        Application.EnableEvents = True
+        Exit Function   'quit and result = False
+    Else
+    'finished calculating PP
+        If InStr(sAutomationUser, Environ("Username")) = 0 Then Application.StatusBar = False   'clear StatusBar
+        PP_Check_Calculations_Completed = True
+        Application.Calculation = xlCalculationSemiautomatic
+        Application.EnableEvents = True
+    End If
+End If
+End Function

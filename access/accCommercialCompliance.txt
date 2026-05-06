@@ -1,0 +1,43 @@
+Attribute VB_Name = "accCommercialCompliance"
+'===========================================================================
+' accCommercialCompliance
+'===========================================================================
+'   Code for loading data via Commercial Compliance database in Access
+'
+
+'=========================================================================
+' VERSION HISTORY
+'=========================================================================
+'v1.00 2020-03-04 17:29 - fn_Load_Compliance_Data: first version
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   None
+'
+
+'===========================================================================
+' References required:
+'===========================================================================
+'   Microsoft ActiveX Data Objects 2.0 Library
+'   Microsoft Office Access Database Engine Objects Library
+'
+
+Option Explicit
+Option Compare Database
+
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+Private Const sRecipients As String = "recipient@company.com; recipient@company.com"
+
+Function fn_Load_Compliance_Data()
+'v1.00 2020-03-04 17:29 - fn_Load_Compliance_Data: first version
+'runs various queries to load Hadoop data into BI-01
+
+'!! PROCESS TO BE FULLY DEFINED -- MAY SWITCH TO USING CSV FILES?
+'!! must be run ASAP after 7am using a Task on PCINSIGHTVM
+
+DoCmd.OpenQuery "Q1 APPEND from Hadoop to BI-01 L7D"
+
+modEmail.SendEmail sRecipients, , , "DATABASE UPDATED: Compliance data copied from Hadoop to BI-01"
+
+End Function

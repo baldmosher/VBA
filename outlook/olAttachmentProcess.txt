@@ -1,0 +1,120 @@
+Attribute VB_Name = "olAttachmentProcess"
+'NB: this process is due to be removed eventually, superseded by direct report from OLAP_Detail
+
+Option Explicit
+Private Const sPathYDrive As String = "\\company.local\BackOffice\P&C\"
+
+Public Sub olSaveAttachtoDisk_Google_Analytics(itm As Outlook.MailItem)
+
+Dim saveFolder As String, workFolder As String
+If InStr(itm.Subject, "Google Analytics:") > 0 Then
+    saveFolder = sPathYDrive & "RT\PC Insight Reports\3 Other\Google Analytics\raw data\"
+End If
+
+' ----------------------- Extract spreadsheet from email to hard drive ----------------------------------
+Dim objAtt As Outlook.Attachment
+Dim dateFormat
+    dateFormat = Format(Now() - 1, "yyyy-mm-dd") 'Now()-1 refers to yesterday's date
+
+     For Each objAtt In itm.Attachments
+          objAtt.SaveAsFile saveFolder & dateFormat & " " & objAtt.DisplayName
+          Set objAtt = Nothing
+     Next
+' ----------------------- Extract spreadsheet from email to hard drive ----------------------------------
+
+Dim currenttime As Date ' Application pauses for 5 seconds
+
+    currenttime = Now
+    Do Until currenttime + TimeValue("00:00:05") <= Now
+    Loop
+
+' ----------------------- Open spreadsheet and run the code ---------------------------------------------
+
+'commented by TP 2016-10-10
+
+'Dim xlApp As Object
+'Set xlApp = CreateObject("Excel.Application")
+'    xlApp.Application.Visible = True
+'    xlApp.Workbooks.Open workFolder & "Run_Daily_Margin_Exceptions.xlsb"
+
+' ----------------------- Delete the attachment from the email ------------------------------------------
+    For Each objAtt In itm.Attachments
+        objAtt.Delete
+        Set objAtt = Nothing
+    Next
+    itm.Save
+    Report_Archive_Logged itm
+
+End Sub
+
+Private Function Report_Archive_Logged(Item As Outlook.MailItem) As Boolean
+'puts email in "Logged" subfolder, marks read & flags complete
+
+Dim OLapp As Outlook.Application
+'Set OlApp = CreateObject("Outlook.Application")
+Set OLapp = Application
+
+Dim objNS As Outlook.NameSpace, objFolder As Outlook.MAPIFolder, ParentFolder As Outlook.MAPIFolder
+Set objNS = OLapp.GetNamespace("MAPI")
+Set objFolder = objNS.Folders("pcinsightvm@company.com").Folders("Inbox").Folders("Reports Processed")
+
+Dim blnFolderCreated As Boolean
+
+Dim subj As String, s As Integer, olFolderName As String, CapturePrefix As String
+
+Dim oMail As Outlook.MailItem
+On Error GoTo SkipArchive
+Set oMail = Application.Session.GetItemFromID(Item.EntryID)
+On Error GoTo 0
+olFolderName = "Logged"
+
+Set ParentFolder = objFolder
+blnFolderCreated = OL_Create_objFolder(olFolderName, ParentFolder)
+If blnFolderCreated = True Then Set ParentFolder = Nothing
+Set objFolder = objFolder.Folders(olFolderName)
+
+Set oMail = Nothing
+
+'mark unread, flag complete, move to specified subfolder
+With Item
+On Error Resume Next
+    .UnRead = False
+    .FlagStatus = olFlagComplete
+    .Save
+    .Move objFolder  'on error, check whether blnFolderCreated is True/False, usually False means it already exists!
+On Error GoTo 0
+End With
+Report_Archive_Logged = True
+SkipArchive:
+End Function
+
+Private Function OL_Create_objFolder(FolderName As String _
+    , Optional ParentFolder As Outlook.MAPIFolder) As Boolean
+'v2.11 2013-01-10 13:15
+
+Dim olOutlook As Outlook.Application
+
+On Error GoTo ErrorHandler
+Set olOutlook = Application
+'if using outside Outlook e.g. within Excel:
+'Set olOutlook = CreateObject("Outlook.Application")
+If ParentFolder Is Nothing Then
+    Dim ns As Outlook.NameSpace
+    Set ns = olOutlook.GetNamespace("MAPI")
+    Set ParentFolder = ns.GetDefaultFolder(olFolderInbox)
+End If
+ParentFolder.Folders.Add FolderName
+On Error GoTo 0
+
+Set olOutlook = Nothing
+Set ns = Nothing
+Set ParentFolder = Nothing
+
+OL_Create_objFolder = True
+Exit Function
+
+ErrorHandler:
+On Error GoTo 0
+OL_Create_objFolder = False
+
+End Function

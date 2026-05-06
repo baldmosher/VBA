@@ -1,0 +1,590 @@
+Attribute VB_Name = "xlScratchpad"
+Option Explicit
+Option Compare Text
+
+'Version History:
+Public Const xlScratchpadCodeVer As String = _
+"xlScratchpad v6.00"
+'v6.00 2018-01-31 11:41 - merged remainder of xlPDFPrint subs
+'v5.06 2017-07-03 13:29 - bugfix when deleting columns and rows
+'v5.05 2017-06-27 15:07 - deletes hidden columns and rows
+'v5.04 2017-06-27 11:15 - updated xlU_Clean_Special from xlUtils
+'                       - bugfix in bLandscape
+'                       - fixed do_scratchlist for pivots
+'v5.03 2017-03-02 17:57 - scratch_PrintPDFRange: optional range, default is PrintArea
+'v5.02 2017-03-02 17:57 - bugfixes and better error handling
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+'v5.00 2017-02-24 18:06 - standardised code with settings on Scratchpad Settings sheet
+'xlScratchpad v4 previous versions:
+'v4.00 2016-10-06 10:57 - bugfix & better layout
+'v3.00 2016-03-07 17:52 - added options for using scratchpad list
+'v2.00 2015-12-23 16:24 - various improvements and bugfixes
+'xlPDFprint v4 previous versions:
+'v4.00 2016-10-06 10:57 - replaced PrintFix with PrintFixNbyN
+'v2.01 2016-06-23 09:27 - added option to show PDF
+'v2.00 2015-12-23 16:24 - various improvements and bugfixes
+
+Function xlScratchpadVer() As String
+xlScratchpadVer = xlScratchpadCodeVer
+End Function
+
+Sub scratchpad(Optional scratch_SheetName As String)
+'v5.06 2017-07-03 13:29 - bugfix when deleting columns and rows
+'v5.05 2017-06-27 15:07 - deletes hidden columns and rows
+'v5.04 2017-06-27 11:15 - bugfix in bLandscape
+'v5.02 2017-03-02 17:57 - bugfixes and better error handling
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+'v5.00 2017-02-24 18:06 - standardised code with settings on Scratchpad Settings sheet
+'v4.00 2016-10-06 10:57 - bugfix
+'1. [creates new WB as scratchpad]
+'2. copies ActiveSheet into new scratchpad sheet as formats/values
+'3. [summarise each sheet on summary sheet?]
+
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+
+Dim wb As Workbook, ws As Worksheet, aws As Worksheet
+Dim pth As String, zl As Integer
+Set aws = ActiveSheet
+zl = ActiveWindow.Zoom
+If scratch_SheetName = "" Then
+    scratch_SheetName = admin_Scratchpad.Range("scratch_OutputSheet")
+End If
+scratch_SheetName = xlU_Clean_Special(scratch_SheetName, True, True, False, True)   'removes invalid characters from string and crops it
+'scratch_SheetName could well be blank after cleaning
+For Each wb In Workbooks
+    If wb.Sheets(1).Name = "scratchpad" Then Exit For
+Next wb
+If wb Is Nothing Then
+'Scratchpad not open, create new Scratchpad, save it to output path
+    Set wb = Workbooks.Add
+    wb.SaveAs scratch_FilePath & ".xlsb", 50  '50 is xlsb
+    wb.Sheets(1).Name = "scratchpad"    'sheet 1 is named so we know if there's a scratchpad open
+Application.DisplayAlerts = False
+    While Sheets.Count > 1  'delete additional sheets in new workbook
+        wb.Sheets(2).Delete
+    Wend
+Application.DisplayAlerts = True
+Else
+On Error Resume Next
+    Set ws = Nothing
+    Set ws = wb.Sheets(scratch_SheetName)
+On Error GoTo 0
+    If Not ws Is Nothing Then scratch_SheetName = Left(scratch_SheetName, 31 - Len(Format(ws.Index, "##"))) & ws.Index
+End If
+'add new sheet to the open Scratchpad
+On Error Resume Next
+    Set ws = Nothing
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    Application.DisplayAlerts = False
+    wb.Sheets(scratch_SheetName).Delete
+    Application.DisplayAlerts = True
+    If scratch_SheetName = "" Then ws.Name = "scratchpad" & ws.Index Else ws.Name = scratch_SheetName
+On Error GoTo 0
+'eventually we could do something useful with the scratchpad sheet, but for now.... just hide it
+If wb.Sheets("scratchpad").Visible <> xlSheetHidden Then wb.Sheets("scratchpad").Visible = xlSheetHidden
+Application.EnableEvents = False
+On Error Resume Next
+CopyAgain:
+    aws.Cells.Copy
+    With ws
+        .Cells.PasteSpecial xlPasteValues
+        .Cells.PasteSpecial xlPasteFormats
+        .Cells.PasteSpecial xlPasteComments
+    If Application.CutCopyMode = False Then GoTo CopyAgain Else Application.CutCopyMode = False
+        .PageSetup.PrintArea = aws.PageSetup.PrintArea
+        Dim rDel As Range, d As Long, rString As String
+    'delete hidden rows (by number)
+DeleteHiddenRows:
+        Set rDel = Nothing
+        For d = 1 To .Rows.Count
+            If .Rows(d).EntireRow.Hidden = True Then
+            'first hidden column
+                If rDel Is Nothing Then Set rDel = .Rows(d) Else Set rDel = .Range(rDel.Rows(1), .Rows(d)).EntireRow
+            ElseIf Not rDel Is Nothing Then
+                rDel.EntireRow.Delete
+                GoTo DeleteHiddenRows
+            End If
+        Next d
+    'delete hidden columns
+DeleteHiddenCols:
+        Set rDel = Nothing
+        For d = 1 To .Columns.Count
+            If .Columns(d).EntireColumn.Hidden = True Then
+            'first hidden column
+                If rDel Is Nothing Then Set rDel = .Columns(d) Else Set rDel = .Range(rDel.Columns(1), .Columns(d)).EntireColumn
+            ElseIf Not rDel Is Nothing Then
+                rDel.EntireColumn.Delete
+                GoTo DeleteHiddenCols
+            End If
+        Next d
+    'carry on
+        Application.GoTo .Cells.SpecialCells(xlCellTypeVisible).Cells(1)
+    End With 'ws
+On Error GoTo 0
+Application.EnableEvents = True
+    ActiveWindow.Zoom = zl
+'set your print layout settings on Scratchpad sheet
+Dim iPagesTall As Byte, iPagesWide As Byte, bLandscape As Boolean
+iPagesTall = admin_Scratchpad.Range("scratch_PagesTall")
+iPagesWide = admin_Scratchpad.Range("scratch_PagesWide")
+On Error Resume Next
+If admin_Scratchpad.Range("scratch_PrintOrientation") = "" Then
+    If ws.PageSetup.Orientation = 2 Then bLandscape = True
+Else
+    bLandscape = Left(admin_Scratchpad.Range("scratch_PrintOrientation"), 1) = "L"
+End If
+On Error GoTo 0
+print_fix_NbyN iPagesWide, iPagesTall, ws, bLandscape, ws.PageSetup.PrintArea
+
+CleanUp:
+Application.GoTo aws.Cells(1)
+Application.ScreenUpdating = bASU
+End Sub
+
+Private Function scratch_FilePath()
+'v5.02 2017-03-02 17:57 - bugfixes and better error handling
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+'v5.00 2017-02-24 18:06 - standardised code with settings on Scratchpad Settings sheet
+Dim wss As Worksheet
+    Set wss = ThisWorkbook.Sheets("Scratchpad")
+Dim sOutputPath As String, sOutputFile As String, sDesktopPath As String
+    sDesktopPath = CreateObject("WScript.Shell").SpecialFolders("Desktop") & "\"
+    sOutputPath = wss.Range("scratch_OutputPath")
+    sOutputPath = Replace(sOutputPath, "\Desktop\", sDesktopPath)
+    sOutputPath = scratch_Create_Folders(sOutputPath)
+On Error GoTo ErrorHandler
+    sOutputFile = wss.Range("scratch_OutputFile")
+scratch_FilePath = sOutputPath & sOutputFile
+Exit Function
+ErrorHandler:
+MsgBox "Error in Scratchpad function: output file error" & vbLf & vbLf & "Contact P&C Insight for support", vbCritical, ""
+End Function
+
+Private Function scratch_Create_Folders(ByVal pth As String) As String
+'v5.00 2017-02-24 18:06 - loops through folders in a path and tries to create them all
+Dim s As String, a As Byte
+a = InStr(1, pth, "\")
+While a > 0
+    s = Left(pth, a)
+    If Dir(s, vbDirectory) = "" Then MkDir s
+    a = InStr(a + 1, pth, "\")
+Wend
+scratch_Create_Folders = s
+End Function
+
+Sub do_scratchlist(wsReport As Worksheet, Optional ByVal BypassMsgBox As Boolean)
+'v5.04 2017-06-27 11:15 - fixed do_scratchlist
+'v5.00 2017-02-24 18:06 - NEEDS TO BE DONE using Call xlPivots.PP_Check_Calculations_Completed
+'v4.00 2016-10-06 10:57 - bugfix
+'get the lists and filter and create scratchpads in turn
+'requires scratchpad list sheet from KPI report
+Dim rList() As Range, s As Byte, smax As Byte, v As Long, vmax As Long
+Dim ws As Worksheet
+Set ws = ThisWorkbook.Sheets("Scratchpad")
+With ws
+    smax = .Cells(1).End(xlToRight).Column
+    ReDim rList(1 To smax) As Range
+    For s = 1 To smax
+        Set rList(s) = .Rows(1).Cells(s)
+        If rList(s).Offset(2) = "" Then Exit Sub
+        Set rList(s) = .Range(rList(s).Offset(2), rList(s).End(xlDown))
+        If vmax = 0 Then
+        'first run, set values parameters
+            vmax = rList(s).Cells.Count
+            ReDim sScratchList(1 To smax, 0 To vmax) As String
+        End If
+        If vmax <> rList(s).Cells.Count Then
+            MsgBox "Blanks found - replace with *", vbCritical, ""
+        End If
+    'get filter name (v=0)
+        sScratchList(s, 0) = .Rows(1).Cells(s)
+    'get scratchpad values
+        For v = 1 To vmax
+            sScratchList(s, v) = rList(s).Cells(v).Text
+        Next v
+    Next s
+End With
+
+If BypassMsgBox = False Then
+'warn the user
+    Dim iTimeEst As Integer, d As Double
+    iTimeEst = fn_iTimeEstimate(v)    'in seconds
+    If iTimeEst < 60 Then iTimeEst = 1 Else iTimeEst = iTimeEst / 60
+    If MsgBox("Estimated time: " & iTimeEst & " mins, continue?", vbQuestion Or vbYesNo, "") = vbNo Then Exit Sub
+    d = Now
+End If
+
+'now drop the scratchpad values into the report, recalculate it, and create scratchpad sheet
+With wsReport
+    Application.GoTo .Cells(1)
+    For v = 1 To vmax
+    'pause filtering (if you have Admin Mode on your report)
+    On Error Resume Next
+        .Range("sel_AdminMode") = True
+    On Error GoTo 0
+    'set all the selected values
+        For s = 1 To smax
+            .Range(sScratchList(s, 0)) = sScratchList(s, v)
+        Next s
+    'unpause filtering (if you have Admin Mode on your report)
+    On Error Resume Next
+        .Range("sel_AdminMode") = False
+    On Error GoTo 0
+    'create scratchpad
+    Application.GoTo .Cells(1)
+        Call scratchpad
+    'next scratchpad
+    Next v
+End With
+
+If BypassMsgBox = False Then
+    iTimeEst = (Now - d) * 24 * 60  'days to mins
+    d = iTimeEst    'whole mins
+    MsgBox "Done!  Took " & d & " mins", vbInformation, ""
+End If
+
+If BypassMsgBox Then
+    Dim wb As Workbook
+    For Each wb In Workbooks
+        For Each ws In wb.Worksheets
+            If ws.Name = "scratchpad" Then Exit For
+        Next ws
+        If Not ws Is Nothing Then
+            wb.Close True
+            Exit For
+        End If
+    Next wb
+End If
+End Sub
+
+Private Function fn_iTimeEstimate(ByVal iPageCount As Integer) As Integer
+Const iFirstFilter As Integer = 30
+Const iSubsqFilter As Integer = 18
+fn_iTimeEstimate = iFirstFilter + (iPageCount * iSubsqFilter)
+End Function
+
+Sub scratchpad_print_PDF()
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+Dim wb As Workbook
+For Each wb In Workbooks
+    If wb.Sheets(1).Name = "scratchpad" Then Exit For
+Next wb
+If wb Is Nothing Then
+    MsgBox "Scratchpad not open, can't print", vbExclamation, ""
+    Exit Sub
+Else
+    wb.Activate
+    scratch_PrintPDFWorkbook wb, scratch_FilePath & ".pdf"
+End If
+End Sub
+
+Sub scratch_PrintPDFRange(Optional ByRef PDFPrintRange As Range, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v5.03 2017-03-02 17:57 - optional range, default is PrintArea
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPrintRange Is Nothing Then
+    If ActiveSheet.PageSetup.PrintArea = "" Then
+        Set PDFPrintRange = ActiveSheet.Cells
+    Else
+        Set PDFPrintRange = ActiveSheet.Range(ActiveSheet.PageSetup.PrintArea)
+    End If
+End If
+If PDFPathFilename = "" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:="", _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+On Error GoTo ErrorPDFOpen
+    If Dir(PDFPathFilename) <> "" Then Kill PDFPathFilename
+On Error GoTo 0
+    PDFPrintRange.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+Exit Sub
+ErrorPDFOpen:
+MsgBox "Permission denied = PDF still open, close it and try again", vbInformation, ""
+End Sub
+
+Sub scratch_PrintPDFWorkbook(ByRef PDFPrintWorkbook As Workbook, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPathFilename = "" Or Right(PDFPathFilename, 1) = "\" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:=PDFPathFilename, _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+    PDFPrintWorkbook.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+End Sub
+
+Sub print_fix_NbyN(ByVal PagesWide As Byte, ByVal PagesTall As Byte _
+    , Optional ByRef ws As Worksheet, Optional ByVal PrintLandscape As Boolean _
+    , Optional ByVal rPrintArea As String)
+'v5.01 2017-02-27 13:56 - combined xlScratchpad and xlPDFPrint, bugfix in App.Calculation
+'v4.00 2016-10-06 10:57 - replaced PrintFix with PrintFixNbyN
+'set Wide/Tall options to 0 to have no page limit
+On Error Resume Next
+Application.PrintCommunication = False
+Dim iAC As Integer, bASU As Boolean
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+If ws Is Nothing Then Set ws = ActiveSheet
+With ws
+    With .PageSetup
+        .PrintTitleRows = ""
+        .PrintTitleColumns = ""
+        If rPrintArea = "" Then rPrintArea = ws.PageSetup.PrintArea
+        .PrintArea = False
+        .PrintArea = rPrintArea
+    End With
+    With .PageSetup
+        .PrintHeadings = False
+        .PrintGridlines = False
+        '.PrintComments = xlPrintNoComments
+        .PrintQuality = 600
+    If PrintLandscape Then .Orientation = xlLandscape Else .Orientation = xlPortrait
+        .PaperSize = xlPaperA4
+        .FirstPageNumber = xlAutomatic
+        .Order = xlDownThenOver
+        .FitToPagesWide = PagesWide
+        .FitToPagesTall = PagesTall
+        .PrintErrors = xlPrintErrorsDisplayed
+    End With
+End With
+
+CleanUp:
+Application.PrintCommunication = True
+Application.ScreenUpdating = bASU
+Application.Calculation = iAC
+End Sub
+
+Private Function xlU_Clean_Special(ByVal str As String, Optional ByVal CropLength As Boolean = True _
+    , Optional ByVal OnlyFilename As Boolean _
+    , Optional ByVal OnlyVBObjectName As Boolean _
+    , Optional ByVal OnlySheetName As Boolean) As String
+'v5.04 2017-06-27 11:15 - updated xlU_Clean_Special from xlUtils
+'v33.06 2017-06-16 14:36 - added OnlySheetName option and removes []
+'v9.00 2013-07-25 19:31
+'removes invalid special characters from path/file/VBObject name string
+' CropLength:=True stops message box warnings and autocrops string to 128 chars
+' OnlyFilename:=True also removes slashes \ /
+' OnlyVBObjectName:=True also removes slashes, spaces, hyphens, commas, periods
+' OnlySheetName:=True also crops to 31 characters
+
+'constants (commented if defined below)
+Const cSpc As String = " "
+Const VBNameLength = 35
+Const SheetNameLength = 31
+Const SharePointFileNameLength = 128
+'consistency checks are done below for the following constants
+Const uniMin As Byte = 0    'first universally forbidden character, MUST BE ZERO
+Const uniMax As Byte = 15   'last universally forbidden character, number set according to how many forbidden characters
+Const slaFSL As Byte = 16   'first slash, always Fsl, AWAYS uniMax+1
+Const slaBSL As Byte = 17   'last slash, always Bsl, AWAYS slaFSL+1
+Const vboMin As Byte = 18   'first VBA forbidden character, AWAYS slaBSL+1
+Const vboMax As Byte = 24   'last VBA forbidden character, number set according to how many forbidden characters
+
+Dim b As Integer, c As Integer, pp As String
+Const tt As String = "ERROR in xlU_Clean_Special"
+Dim sc(uniMin To vboMax) As String
+sc(uniMin) = "~"     'unimin referenced specifically below
+sc(uniMin + 1) = Chr(34) 'Chr(34) = " (quotemark)
+sc(uniMin + 2) = "#"
+sc(uniMin + 3) = "%"
+sc(uniMin + 4) = "&"
+sc(uniMin + 5) = "*"
+sc(uniMin + 6) = ":"
+sc(uniMin + 7) = "<"
+sc(uniMin + 8) = ">"
+sc(uniMin + 9) = "?"
+sc(uniMin + 10) = "{"
+sc(uniMin + 11) = "|"
+sc(uniMin + 12) = "}"
+sc(uniMin + 13) = "["
+sc(uniMin + 14) = "]"
+If uniMin + 15 <> uniMax Then   'consistency check
+    pp = "uniMin + 15 <> uniMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(uniMax) = ".."
+'slashes for filenames and VB Object names (NOT paths)
+sc(slaFSL) = "/"
+sc(slaBSL) = "\"
+'hyphen & space & comma & period & brackets & apostrophe for VB Object names
+sc(vboMin) = "-"
+sc(vboMin + 1) = " "
+sc(vboMin + 2) = ","
+sc(vboMin + 3) = "."
+sc(vboMin + 4) = "("
+sc(vboMin + 5) = "'"
+If vboMin + 6 <> vboMax Then    'consistency check
+    pp = "vboMin + 6 <> vboMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(vboMax) = ")"
+
+'remove special characters from all
+For b = uniMin To uniMax
+    str = Replace(str, sc(b), vbNullString)
+Next b
+
+'check filename length (length AFTER the LAST slash max 128 chars)
+b = InStr(1, str, sc(slaFSL))  'look for fwd slash
+If b > 0 Then
+    str = Replace(str, sc(slaBSL), sc(slaFSL))  'remove all back slashes
+    Do Until b = 0  'until last slash found
+        c = b       'c is position of last slash
+        b = b + 1                   'next position
+        b = InStr(b, str, sc(slaFSL))   'next position
+    Loop
+Else  'no fwd slashes
+    b = InStr(1, str, sc(slaBSL))  'look for back slash
+    If b > 0 Then
+        str = Replace(str, sc(slaFSL), sc(slaBSL))  'remove all fwd slashes
+        Do Until b = 0  'until last slash found
+            c = b       'c is position of last slash
+            b = b + 1                   'next position
+            b = InStr(b, str, sc(slaBSL))   'next position
+        Loop
+    End If
+End If
+'c is position of last slash, or 0 if no slashes
+If Len(str) - c > SharePointFileNameLength Then
+    If CropLength = True Then
+        str = Left(str, VBNameLength)
+    Else
+        pp = "WARNING: filename > " & SharePointFileNameLength & " chars" & vbLf & vbLf & str
+        MsgBox pp, vbCritical, tt
+        End
+    End If
+End If
+
+If OnlyFilename = True Or OnlyVBObjectName = True Or OnlySheetName = True Then
+'swap all slashes for spaces - NOT suitable for paths!
+    For b = slaFSL To slaBSL
+        c = InStr(str, sc(b))
+        Do While c > 0
+            str = Left(str, c - 1) & Replace(Right(str, Len(str) - c), sc(b), cSpc)
+            c = InStr(str, sc(b))
+        Loop
+    Next b
+End If
+
+If OnlyVBObjectName = True Then
+'swap hyphens & spaces & periods for underscore in VB object name
+    Const scUS As String = "_"
+    For b = slaFSL To vboMax
+        str = Replace(str, sc(b), scUS)
+    Next b
+'then remove invalid characters from start of string
+    Dim c1 As String
+    c1 = Left(str, 1)
+    Do While c1 = scUS Or c1 = sc(18) Or IsNumeric(c1)
+        str = Right(str, Len(str) - 1)
+        c1 = Left(str, 1)
+    Loop
+'remove double underscore
+    Do While InStr(str, scUS & scUS) > 0
+        str = Replace(str, scUS & scUS, scUS)
+    Loop
+'remove needless underscores from end of string
+    Do While Right(str, 1) = scUS
+        str = Left(str, Len(str) - 1)
+    Loop
+    'check object name length
+    If Len(str) > VBNameLength Then
+        If CropLength = True Then
+            str = Left(str, VBNameLength)
+        Else
+            pp = "WARNING: object name > " & VBNameLength & " chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+'remove needless underscores from end of string
+Do While Right(str, 1) = scUS
+    str = Left(str, Len(str) - 1)
+Loop
+
+'crop length
+If OnlySheetName Then
+    If Len(str) > SheetNameLength Then
+        If CropLength = True Then
+            str = Left(str, SheetNameLength)
+        Else
+            pp = "WARNING: sheet name > " & SheetNameLength & " chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+xlU_Clean_Special = str
+
+End Function
+
+Sub PrintPDFRange(ByRef PDFPrintRange As Range, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v6.00 2018-01-31 11:41 - merged remainder of xlPDFPrint subs
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPathFilename = "" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:="", _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+On Error GoTo ErrorPDFOpen
+    If Dir(PDFPathFilename) <> "" Then Kill PDFPathFilename
+On Error GoTo 0
+    PDFPrintRange.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+Exit Sub
+ErrorPDFOpen:
+MsgBox "Permission denied = PDF still open, close it and try again", vbInformation, ""
+End Sub
+
+Sub PrintPDFWorkbook(ByRef PDFPrintWorkbook As Workbook, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v6.00 2018-01-31 11:41 - merged remainder of xlPDFPrint subs
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPathFilename = "" Or Right(PDFPathFilename, 1) = "\" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:=PDFPathFilename, _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+    PDFPrintWorkbook.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+End Sub
+
+
+

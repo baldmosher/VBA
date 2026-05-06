@@ -1,0 +1,294 @@
+Attribute VB_Name = "xlPDFprint"
+
+' ****************************************************************
+' ****************************************************************
+' ****************************************************************
+'
+'  NOTE: YOU SHOULD ALWAYS NOW USE xlScratchpad INSTEAD OF THIS
+'
+' ****************************************************************
+' ****************************************************************
+' ****************************************************************
+
+Option Explicit
+Option Compare Text
+
+'Version History:
+Public Const xlPDFPrintCodeVer As String = _
+"xlPDFPrint v4.01"
+'v4.01 2017-05-05 14:13 - added xlPDFPrintCodeVer and
+'v4.00 2016-10-06 10:57 - replaced PrintFix with PrintFixNbyN
+'v2.01 2016-06-23 09:27 - added option to show PDF
+'v2.00 2015-12-23 16:24 - various improvements and bugfixes
+
+Function xlPDFPrintVer() As String
+xlPDFPrintVer = xlPDFPrintCodeVer
+End Function
+
+Private Function fn_scratchpad_filename()
+'set filename here if wanted, if left blank it'll prompt user for PDF filename
+fn_scratchpad_filename = ""
+End Function
+
+Sub scratchpad_print_PDF()
+Dim wb As Workbook
+For Each wb In Workbooks
+    If wb.Sheets(1).Name = "scratchpad" Then Exit For
+Next wb
+If wb Is Nothing Then
+    MsgBox "Scratchpad not open, can't print", vbExclamation, ""
+    Exit Sub
+Else
+    Dim pth As String, fn As String
+    pth = CreateObject("WScript.Shell").SpecialFolders("Desktop")
+    'pth = "C:\Users\" & Environ("username") & "\Desktop\"
+    If Dir(pth, vbDirectory) = "" Then
+        MsgBox "Desktop not found - please contact [redacted] / P&C Insight for support", vbCritical
+        Exit Sub
+    End If
+    On Error Resume Next
+    pth = pth & "\P&C Insight Reports"
+    If Dir(pth, vbDirectory) = "" Then MkDir pth
+    pth = pth & "\" & Left(ThisWorkbook.Name, InStr(ThisWorkbook.Name, ".xl") - 1)
+    If Dir(pth, vbDirectory) = "" Then MkDir pth
+    pth = pth & "\Scratchpad PDFs"
+    If Dir(pth, vbDirectory) = "" Then MkDir pth
+    On Error GoTo 0
+    pth = pth & "\"
+    If Dir(pth, vbDirectory) = "" Then
+        MsgBox "Couldn't create folders on Desktop - please contact [redacted] / P&C Insight for support", vbCritical
+        Exit Sub
+    End If
+    wb.Activate
+    xlPDFprint.PrintPDFWorkbook wb, pth & fn_scratchpad_filename
+End If
+End Sub
+
+Sub PrintPDFRange(ByRef PDFPrintRange As Range, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPathFilename = "" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:="", _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+On Error GoTo ErrorPDFOpen
+    If Dir(PDFPathFilename) <> "" Then Kill PDFPathFilename
+On Error GoTo 0
+    PDFPrintRange.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+Exit Sub
+ErrorPDFOpen:
+MsgBox "Permission denied = PDF still open, close it and try again", vbInformation, ""
+End Sub
+
+Sub PrintPDFWorkbook(ByRef PDFPrintWorkbook As Workbook, Optional PDFPathFilename As String _
+    , Optional ShowPDFAfterPublish As Boolean)
+'v2.01 2016-06-23 09:27 - added option to show PDF
+If PDFPathFilename = "" Or Right(PDFPathFilename, 1) = "\" Then
+    PDFPathFilename = Application.GetSaveAsFilename(InitialFileName:=PDFPathFilename, _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Select Path and enter Filename to save PDF")
+End If
+If PDFPathFilename <> "False" Then
+    PDFPrintWorkbook.ExportAsFixedFormat Type:=xlTypePDF, _
+        Filename:=PDFPathFilename, _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=ShowPDFAfterPublish
+End If
+End Sub
+
+Sub print_fix_NbyN(ByVal PagesWide As Byte, ByVal PagesTall As Byte _
+    , Optional ByRef ws As Worksheet, Optional ByVal PrintLandscape As Boolean _
+    , Optional ByVal rPrintArea As String)
+'v4.00 2016-10-06 10:57 - replaced PrintFix with PrintFixNbyN
+'set Wide/Tall options to 0 to have no page limit
+On Error Resume Next
+Application.PrintCommunication = False
+Dim ac
+ac = Application.Calculation
+Application.Calculation = xlCalculationManual
+Application.ScreenUpdating = False
+If ws Is Nothing Then Set ws = ActiveSheet
+With ws
+    With .PageSetup
+        .PrintTitleRows = ""
+        .PrintTitleColumns = ""
+        If rPrintArea = "" Then rPrintArea = ws.PageSetup.PrintArea
+        .PrintArea = False
+        .PrintArea = rPrintArea
+    End With
+    With .PageSetup
+        .PrintHeadings = False
+        .PrintGridlines = False
+        '.PrintComments = xlPrintNoComments
+        .PrintQuality = 600
+    If PrintLandscape Then .Orientation = xlLandscape Else .Orientation = xlPortrait
+        .PaperSize = xlPaperA4
+        .FirstPageNumber = xlAutomatic
+        .Order = xlDownThenOver
+        .FitToPagesWide = PagesWide
+        .FitToPagesTall = PagesTall
+        .PrintErrors = xlPrintErrorsDisplayed
+    End With
+End With
+Application.PrintCommunication = True
+Application.ScreenUpdating = True
+Application.Calculation = ac
+End Sub
+
+Private Function xlU_Clean_Special(ByVal str As String, Optional ByVal CropLength As Boolean = True _
+    , Optional ByVal PathNotInString As Boolean _
+    , Optional ByVal OnlyVBObjectName As Boolean) As String
+'from xlUtils
+'v9.00 2013-07-25 19:31
+'removes invalid special characters from path/file/VBObject name string
+' CropLength:=True stops message box warnings and autocrops string to 128 chars
+' PathNotInString:=True also removes slashes \ /
+' OnlyVBObjectName:=True also removes slashes, spaces, hyphens, commas, periods
+
+'constants (commented if defined below)
+'Const scUS As String = "_"
+Const cSpc As String = " "
+Const VBNameLength = 35
+Const SharePointFileNameLength = 128
+'consistency checks are done below for the following constants
+Const uniMin As Byte = 0    'first universally forbidden character, MUST BE ZERO
+Const uniMax As Byte = 13   'last universally forbidden character, number set according to how many forbidden characters
+Const slaFSL As Byte = 14   'first slash, always Fsl, AWAYS uniMax+1
+Const slaBSL As Byte = 15   'last slash, always Bsl, AWAYS slaFSL+1
+Const vboMin As Byte = 16   'first VBA forbidden character, AWAYS slaBSL+1
+Const vboMax As Byte = 22   'last VBA forbidden character, number set according to how many forbidden characters
+
+Dim b As Integer, c As Integer, pp As String
+Const tt As String = "ERROR in xlU_Clean_Special"
+Dim sc(uniMin To vboMax) As String
+sc(uniMin) = "~"     'unimin referenced specifically below
+sc(uniMin + 1) = Chr(34) 'Chr(34) = " (quotemark)
+sc(uniMin + 2) = "#"
+sc(uniMin + 3) = "%"
+sc(uniMin + 4) = "&"
+sc(uniMin + 5) = "*"
+sc(uniMin + 6) = ":"
+sc(uniMin + 7) = "<"
+sc(uniMin + 8) = ">"
+sc(uniMin + 9) = "?"
+sc(uniMin + 10) = "{"
+sc(uniMin + 11) = "|"
+sc(uniMin + 12) = "}"
+If uniMin + 13 <> uniMax Then   'consistency check
+    pp = "uniMin + 13 <> uniMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(uniMax) = ".."
+'slashes for filenames and VB Object names (NOT paths)
+sc(slaFSL) = "/"
+sc(slaBSL) = "\"
+'hyphen & space & comma & period & brackets & apostrophe for VB Object names
+sc(vboMin) = "-"
+sc(vboMin + 1) = " "
+sc(vboMin + 2) = ","
+sc(vboMin + 3) = "."
+sc(vboMin + 4) = "("
+sc(vboMin + 5) = "'"
+If vboMin + 6 <> vboMax Then    'consistency check
+    pp = "vboMin + 6 <> vboMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(vboMax) = ")"
+
+'remove special characters from all
+For b = uniMin To uniMax
+    str = Replace(str, sc(b), vbNullString)
+Next b
+
+'check filename length (length AFTER the LAST slash max 128 chars)
+b = InStr(1, str, sc(slaFSL))  'look for fwd slash
+If b > 0 Then
+    str = Replace(str, sc(slaBSL), sc(slaFSL))  'remove all back slashes
+    Do Until b = 0  'until last slash found
+        c = b       'c is position of last slash
+        b = b + 1                   'next position
+        b = InStr(b, str, sc(slaFSL))   'next position
+    Loop
+Else  'no fwd slashes
+    b = InStr(1, str, sc(slaBSL))  'look for back slash
+    If b > 0 Then
+        str = Replace(str, sc(slaFSL), sc(slaBSL))  'remove all fwd slashes
+        Do Until b = 0  'until last slash found
+            c = b       'c is position of last slash
+            b = b + 1                   'next position
+            b = InStr(b, str, sc(slaBSL))   'next position
+        Loop
+    End If
+End If
+'c is position of last slash, or 0 if no slashes
+If Len(str) - c > SharePointFileNameLength Then
+    If CropLength = True Then
+        str = Left(str, VBNameLength)
+    Else
+        pp = "WARNING: filename > " & SharePointFileNameLength & " chars" & vbLf & vbLf & str
+        MsgBox pp, vbCritical, tt
+        End
+    End If
+End If
+
+If PathNotInString = True Or OnlyVBObjectName = True Then
+'swap all slashes for spaces - NOT suitable for paths!
+    For b = slaFSL To slaBSL
+        c = InStr(str, sc(b))
+        Do While c > 0
+            str = Left(str, c - 1) & Replace(Right(str, Len(str) - c), sc(b), cSpc)
+            c = InStr(str, sc(b))
+        Loop
+    Next b
+End If
+
+If OnlyVBObjectName = True Then
+'swap hyphens & spaces & periods for underscore in VB object name
+    Const scUS As String = "_"
+    For b = slaFSL To vboMax
+        str = Replace(str, sc(b), scUS)
+    Next b
+'then remove invalid characters from start of string
+    Dim c1 As String
+    c1 = Left(str, 1)
+    Do While c1 = scUS Or c1 = sc(18) Or IsNumeric(c1)
+        str = Right(str, Len(str) - 1)
+        c1 = Left(str, 1)
+    Loop
+'remove double underscore
+    Do While InStr(str, scUS & scUS) > 0
+        str = Replace(str, scUS & scUS, scUS)
+    Loop
+    'check object name length
+    If Len(str) > VBNameLength Then
+        If CropLength = True Then
+            str = Left(str, VBNameLength)
+        Else
+            pp = "WARNING: object name > 35 chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+'remove needless underscores from end of string
+Do While Right(str, 1) = scUS
+    str = Left(str, Len(str) - 1)
+Loop
+
+xlU_Clean_Special = str
+
+End Function
+
+

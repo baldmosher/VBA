@@ -1,0 +1,41 @@
+Attribute VB_Name = "accAuto_pcopsvm"
+Option Compare Database
+
+Private Const sAutoUser As String = "pcopsvm"
+Private Const sEmailTo As String = "pcopsvm@company.com; recipient@company.com"
+
+'Version History:
+'note: accAuto module is changed for pcopsvm at v3.01 and no longer standard for pcinsightvm
+Public Const accAutoCodeVer As String = _
+"accAuto v3.02"
+'v3.02 2020-10-15 13:04 - only runs AutoExec at 18:00-18:59hrs, otherwise asks
+'v3.01 2018-01-30 10:19 - bugfix: DoCmd.Quit not Application.Quit
+'v3.00 2017-12-27 09:23 - allows you to run two or more routines using QuitWhenDone parameter
+'v2.01 2017-09-29 10:13 - changed to WScript instead of Excel reference
+'v2.00 2017-06-06 13:36 - added modEmail (v11.12 or later)
+'v1.00 2017-0?-?? ??:?? - first version
+
+Function accAutoVer() As String
+accAutoVer = accAutoCodeVer
+End Function
+
+Function AutoExec_pcopsvm(ByVal sNameOfMacro, Optional QuitWhenDone = True)
+'v3.02 2020-10-15 13:04 - only runs AutoExec at 18:00-18:59hrs, otherwise asks
+If CreateObject("WScript.Network").UserName <> sAutoUser Then Exit Function
+If Hour(Now) = 18 Then GoTo AutoExec
+If MsgBox("Outside normal running time.  Run AutoExec anyway?", vbQuestion Or vbYesNo, "") = vbNo Then Exit Function
+
+AutoExec:
+    DoCmd.RunMacro sNameOfMacro
+    Send_Email_Success
+    If QuitWhenDone Then DoCmd.Quit
+End Function
+
+Sub Send_Email_Success()
+    modEmail.SendEmail sEmailTo, "", "" _
+        , "Successfully updated: " & CurrentProject.Name _
+        , "Access database updated." _
+            & "<p>" & "Database: <a href=" & Chr(34) & CurrentProject.FullName & Chr(34) & ">" & CurrentProject.Name & "</a>" _
+            & "<p>" & accAuto_pcopsvm.accAutoCodeVer & "<br>" & modEmail.modEmailCodeVer _
+            , False, , , , , True
+End Sub

@@ -1,0 +1,133 @@
+Attribute VB_Name = "olReminders"
+Option Explicit
+Option Compare Text
+
+Public Const sAppointmentCategory As String = "Logged"                                                      'category for all scheduled Reminders
+Public Const sAppointmentArchiveSubject As String = "DO NOT DELETE OR DISMISS - Archive reminder"           'subject controls behaviour in code (Application_Reminder event)
+'Public Const sAppointmentInboxesSubject As String = "DO NOT DELETE OR DISMISS - Inbox Count reminder"   'subject controls behaviour in code (Application_Reminder event)
+Public Const cPCIVMemail As String = ""
+
+Sub Relaunch_Appointments()
+
+On Error Resume Next
+
+'Call DeleteAppointmentItemBySubject(sAppointmentArchiveSubject)
+'moved Delete into Create routine
+Call CreateAppointment(sAppointmentArchiveSubject)
+'Call DeleteAppointmentItemBySubject(sAppointmentSubject, True) 'this always deletes & recreates
+'MsgBox "Created appointment " & sAppointmentArchiveSubject & ", please check & delete duplicates"
+
+'Call DeleteAppointmentItemBySubject(sAppointmentInboxesSubject)
+'moved Delete into Create routine
+'Call CreateAppointment(sAppointmentInboxesSubject)
+'MsgBox "Created appointment " & sAppointmentInboxesSubject & ", please check & delete duplicates"
+
+End Sub
+
+Sub CreateAppointment(ByVal sAppointmentSubject As String)
+
+If DeleteAppointmentItemBySubject(sAppointmentSubject) = False Then Exit Sub
+
+On Error Resume Next
+
+Dim tDate As Date
+    ' Using a 1 min reminder so 6  = reminder fires at 5 min.
+    'tDate = Now() + 6 / 1440
+    ' Setting an Hourly timer
+    'tDate = Now() + 61 / 1440
+    ' Setting a Nightly reminder for 10pm tonight (nightly)
+    ' Reset for 10pm tomorrow if it's already done it today
+
+If sAppointmentSubject = sAppointmentArchiveSubject Then
+    ' Setting a Nightly reminder for 6pm tonight (nightly)
+    ' Reset for 6pm tomorrow if it's already done it today
+    tDate = Int(Now()) + 1080 / 1440    '1080 = 6pm
+    If tDate < Now() Then tDate = tDate + 1
+
+'ElseIf sAppointmentSubject = sAppointmentInboxesSubject Then
+'    ' Using a 0 min reminder so 5  = reminder fires at 5 min.
+'    tDate = Now() + 5 / 1440
+
+End If
+
+Dim objAppointment As Outlook.AppointmentItem
+Set objAppointment = Application.CreateItem(olAppointmentItem)
+      With objAppointment
+        .Categories = sAppointmentCategory
+        .Body = sAppointmentSubject
+        .Start = tDate
+        .End = tDate
+        .Subject = sAppointmentSubject
+        .ReminderSet = True
+        .ReminderMinutesBeforeStart = 0
+        .Save
+      End With
+
+End Sub
+
+Function DeleteAppointmentItemBySubject(strAppSubject As String, Optional bAlwaysDelete As Boolean) As Boolean
+    'source: https://access-programmers.co.uk/forums/showthread.php?t=168216
+    '   Use this method ONLY if the subject of the
+    '   Appointment Item is known and is UNIQUE.
+    Dim mobjOLA As Outlook.Application
+    Dim mobjNS As Outlook.NameSpace
+    Dim mobjFLDR As Outlook.Folder
+    Dim mobjAppt As Outlook.AppointmentItem
+    Dim mobjDupe() As Outlook.AppointmentItem
+    Dim mobjMeet As Outlook.MeetingItem
+    Dim i As Integer, d As Integer
+    Set mobjOLA = Application 'CreateObject("Outlook.Application")
+    Set mobjNS = mobjOLA.GetNamespace("MAPI")
+    mobjNS.Logon , , False, False
+    Set mobjFLDR = mobjNS.GetDefaultFolder(olFolderCalendar)
+    On Error Resume Next
+    i = mobjFLDR.Items.Count
+    Debug.Print "Total " & i & " items in Calendar"
+    i = 0
+'delete all items from Calendar except for DO NOT DELETE items
+    For Each mobjMeet In mobjFLDR.Items 'delete all Meetings (basic cleanup)
+        mobjMeet.Delete
+        i = i + 1
+    Next mobjMeet
+'delete relevant Appointments
+    i = 0
+    d = 0
+    For Each mobjAppt In mobjFLDR.Items
+    'duplicates first
+        If Left(mobjAppt.Subject, 24) = "DO NOT DELETE OR DISMISS" Then
+            ReDim Preserve mobjDupe(0 To i) As Outlook.AppointmentItem
+            Set mobjDupe(i) = mobjAppt
+            i = i + 1
+        End If
+    Next mobjAppt
+    For i = 1 To i - 1
+        mobjDupe(i).Delete
+        d = d + 1
+    Next i
+    For Each mobjAppt In mobjFLDR.Items
+    'other Appointments
+        If Left(mobjAppt.Subject, 24) <> "DO NOT DELETE OR DISMISS" Then
+            mobjAppt.Delete
+            d = d + 1
+        End If
+    Next mobjAppt
+    'relevant appointments in the past
+    Set mobjAppt = Nothing
+    Set mobjAppt = mobjFLDR.Items(strAppSubject)
+    If mobjAppt Is Nothing Then
+    'reminder doesn't exist, need to create one
+        DeleteAppointmentItemBySubject = True
+    ElseIf bAlwaysDelete = False And mobjAppt.Start > Now() Then
+    'reminder already set in the future, don't need to create it again
+        DeleteAppointmentItemBySubject = False
+    Else
+    'need to delete & create it
+        mobjAppt.Delete
+        d = d + 1
+        DeleteAppointmentItemBySubject = True
+    End If
+    Debug.Print "Deleted " & d & " items"
+    i = mobjFLDR.Items.Count
+    Debug.Print "Total " & i & " items in Calendar"
+End Function
+

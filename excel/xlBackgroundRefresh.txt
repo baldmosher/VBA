@@ -1,0 +1,450 @@
+Attribute VB_Name = "xlBackgroundRefresh"
+Option Explicit
+Option Compare Text
+
+'xlBackgroundRefresh
+
+'Summary:
+'Refreshes all Data Connections as BackgroundQueries, waits until all have refreshed,
+'updates pivots, then calculates lookups
+
+Private Const cFirstColumnInConnectionsBox As Integer = 7
+Private Const cConnectionsBlockHeaderRowColorIndex As Integer = 44  'orange
+
+Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As Long)
+
+Public xlB_UpdateFailed As Byte 'if this is numbered, it triggers a specific error email to be sent in modAuto
+'Reasons:
+'   xlB_UpdateFailed = 1  = PP failed to initialise
+Private Const bMaxDataModelRetries As Byte = 3  'max retries on DataModel.Refresh before quitting
+
+'Version History:
+Public Const xlBackgroundRefreshCodeVer As String = _
+"xlBackgroundRefresh v8.00"
+'v8.00 2019-11-22 10:20 - added xlB_Remove_Read_Only_And_Save
+'v7.02 2019-11-22 10:17 - fn_Clean_Connection_String: added new VMs to blunt list
+'v7.01 2019-11-06 13:10 - added notes for Report Refresh List (simple updater)
+'v7.00 2018-07-09 15:36 - added fn_Clean_Connection_String
+'v6.04 2017-12-27 14:39 - fn_IsPP: added Exit Function where no data model exists (saves 10s, prevents errors)
+'v6.03 2017-12-04 09:32 - fn_IsPP: last chance with the errorhandler, it just doesn't seem to work
+'                       - Background_Refresh_And_Wait: removed errorhandler around ThisWorkbook.Model.Initialize, no longer needed
+'v6.02 2017-11-17 09:06 - moved ThisWorkbook.Model.Initialize to fn_IsPP to try and make errorhandler work
+'v6.01 2017-08-01 17:02 - fn_IsPP: complete rewrite, just looks for connection name
+'v6.00 2017-07-24 11:22 - added fn_Switch_Database_Server_In_Connections
+'v5.01 2017-07-24 11:21 - slight improvement to ordering of attempted retries, added Sleep function
+'v5.00 2017-07-04 08:47 - reverted to using RefreshAll, seems more reliable if PP calc checks are used
+'v4.06 2017-07-03 13:15 - bugfix in PP section - removed Model.Initialise / Model.Initialize
+'v4.05 2017-07-02 17:07 - bugfix in PP section
+'v4.04 2017-07-01 18:54 - bugfix in QT section
+'v4.03 2017-06-30 09:34 - added exception to RefreshDate routine for PP/QT, which have no RefreshDate property
+'v4.02 2017-06-30 08:47 - added bMaxDataModelRetries and attempt retry during failure
+'v4.01 2017-06-29 10:02 - fn_Connections_Block: minor performance tweaks
+'v4.00 2017-06-28 12:08 - rebuilt process to refresh PT, QT then PP separately
+'v3.03 2017-06-26 08:32 - swapped order of refresh back again, may have proven to be unreliable
+'                       - added xlB_UpdateFailed to read failure messages in modAuto
+'v3.02 2017-06-20 13:28 - late binding in fn_IsPP when admin sheet not present
+'v3.01 2017-06-06 10:08 - added error handler for Model.Initialize
+'v3.00 2017-05-30 12:32 - added fn_IsPP and test for IsPP (don't need to have PP in the filename now)
+'                       - changed order of refresh, does PP first (takes longer this way, but it should be more reliable)
+'                       - added ThisWorkbook.Model.Initialise (not sure this actually does anything though!)
+'v2.07 2017-02-23 09:01 - renamed constant for block colour to cConnectionsBlockHeaderRowColorIndex
+'v2.06 2017-02-20 14:55 - added fn_Connections_Block, tweaks to v2.05 code, creates or sets formatting for Connections block
+'v2.05 2017-02-20 12:20 - sets formatting for Connections block
+'v2.04 2016-11-28 11:57 - added extra step for refreshing PP model (ThisWorkbook.Model.Refresh)
+'v2.03 2016-06-27 13:59 - clears old Connections
+'v2.02 2015-05-04 17:13 - added xlBackgroundRefreshVer function
+'v2.01 2015-04-13 18:00 - added xlBackgroundRefreshCodeVer function to collect version number from module
+'v2.00 2016-04-06 08:40 - (optionally) records results on admin sheet
+'v1.04 2015-10-30 09:40 - minor Debug.Print improvement
+'v1.03 2015-10-26 16:09 - code improvement
+'v1.02 2015-10-22 13:31 - bugfix for OLEDB connections
+'v1.01 2015-10-12 13:17 - bugfix for timer, created module, disabled DisplayAlerts
+'v1.00 2015-10-09 13:00 - first version
+
+'==========================================================================================
+'  Details:
+'==========================================================================================
+'
+'Some neat code to background-refresh all Connections in the workbook, and wait until
+'they've refreshed, and calculate when done.  Excel will 'freeze' while it's refreshing
+'so be patient.
+'
+'This should work with any pivot tables, QueryTables, ODBC/OLEDB connections, etc.
+'Doing it this way will allow Excel to refresh all the background connections
+'simultaneously, which is more efficient than doing one at a time.  However, that does
+'put extra strain on the server, so treat this with a little caution.  (The queries
+'would be run simultaneously if you did it in SQL Server anyway so don't get too
+'worried about that.)
+'
+'The function will return True/False, depending on whether all the queries updated
+'successfully or not.  You can override that (see below)
+'
+'Always test this before putting it into a live report, and always consider how you
+'might prevent end users from refreshing the tables themselves by accident.
+'
+'Connections block will be added automatically if not present, and formatted.
+'
+'
+'To use it, one of the following example commands:
+'
+'Call Background_Refresh_And_Wait
+'Background_Refresh_And_Wait
+'If Background_Refresh_And_Wait() Then MsgBox "Worked" Else MsgBox "Didn't work"
+'If Background_Refresh_And_Wait(True) Then MsgBox "This is always True regardless of the result, because you specified that"
+'
+'
+'
+'==========================================================================================
+'  Code for Report Refresh List (simple updater) pasted into ThisWorkbook in report
+'==========================================================================================
+'
+'Option Explicit
+'Option Compare Text
+'
+'Private Sub Workbook_Open()
+'If Environ("Username") = "pcinsightvm" Then
+'    If InStr(Application.Caption, "read-only") = 0 Then
+'        Call xlBackgroundRefresh.Background_Refresh_And_Wait(True, False)
+'        ThisWorkbook.Save
+'    End If
+'    Application.Quit
+'End If
+'End Sub
+
+'
+'
+'Help Contact:
+'recipient@company.com
+'ext 16110
+
+Function xlBackgroundRefreshVer() As String
+xlBackgroundRefreshVer = xlBackgroundRefreshCodeVer
+End Function
+
+Sub run_it_quick()
+If Background_Refresh_And_Wait(, True) Then MsgBox "Worked" Else MsgBox "Didn't work"
+End Sub
+
+Function Background_Refresh_And_Wait(Optional ByVal AlwaysResultTrue As Boolean _
+    , Optional ByVal RecordResults As Boolean) As Boolean
+'NB: if you don't have any PivotTables the validation doesn't work, so then you should specify AlwaysResultTrue as True and test it thoroughly
+'v7.00 2018-07-09 15:36 - added fn_Clean_Connection_String
+'v6.03 2017-12-04 09:32 - removed errorhandler around ThisWorkbook.Model.Initialize, no longer needed
+'v6.02 2017-11-17 09:06 - moved ThisWorkbook.Model.Initialize to fn_IsPP to try and make errorhandler work
+'v5.01 2017-07-24 11:21 - slight improvement to ordering of attempted retries, added Sleep function
+'v5.00 2017-07-04 08:47 - reverted to using RefreshAll
+'v4.06 2017-07-03 13:15 - bugfix in PP section - removed Model.Initialise / Model.Initialize
+'v4.05 2017-07-02 17:07 - bugfix in PP section
+'v4.04 2017-07-01 18:54 - bugfix in QT section
+'v4.03 2017-06-30 09:34 - added exception to RefreshDate routine for PP/QT, which have no RefreshDate property
+'v4.02 2017-06-30 08:47 - added bMaxDataModelRetries and attempt retry during failure
+'v4.00 2017-06-28 12:08 - rebuilt process to refresh PT, QT then PP separately
+'v3.03 2017-06-26 08:32 - swapped order of refresh back again, may have proven to be unreliable
+'                       - added xlB_UpdateFailed to read failure messages in modAuto
+'v3.01 2017-06-06 10:08 - added error handler for Model.Initialize (no dedicated email notification - use modAuto)
+'v3.00 2017-05-30 11:48 - added test for IsPP (don't need to have PP in the filename now)
+'                       - changed order of refresh, does PP first (takes longer this way, but it should be more reliable)
+'                       - added ThisWorkbook.Model.Initialise (not sure this actually does anything though!)
+'v2.06 2017-02-20 14:55 - creates or sets formatting for Connections block
+'v2.05 2017-02-20 12:20 - sets formatting for Connections block
+'v2.04 2016-11-28 11:57 - added extra step for refreshing PP model (ThisWorkbook.Model.Refresh)
+'v2.03 2016-06-27 13:59 - clears old Connections
+'v2.00 2016-04-06 08:40 - (optionally) records results on admin sheet
+'v1.04 2015-10-30 09:40 - minor Debug.Print improvement
+'v1.03 2015-10-26 16:09 - code improvement
+'v1.02 2015-10-22 13:31 - bugfix for OLEDB connections
+'v1.01 2015-10-12 13:17 - bugfix for timer, created module, disabled DisplayAlerts
+'v1.00 2015-10-09 13:00 - first version
+
+'to restore Events after a change
+    Dim bAEE As Boolean
+    bAEE = Application.EnableEvents
+
+'don't stop on overwrite errors
+    Application.DisplayAlerts = False
+'indicate that it's updating (NB: hides Background query refreshing and Calculating progress bars)
+    Application.StatusBar = "Auto-updating..."
+
+'start connections validity timer (used later)
+    Dim cvt As Double, udt As Double  'tests if connection updated after now
+    cvt = Now
+
+'(optionally) find output range on admin sheet for recording updated timestamp
+    Dim rAdminLog As Range
+    If RecordResults Then
+    On Error Resume Next    'so it doesn't halt on error
+        Set rAdminLog = fn_Connections_Block                'create/reformat block
+        If rAdminLog Is Nothing Then RecordResults = False  'not created, bypass logging
+    On Error GoTo 0
+    End If
+
+'set all OLEDB/ODBC data connections to background queries
+'clean up connection strings
+    Dim cn As Object, c As Byte, cmax As Byte, IsPP As Boolean
+    cmax = ThisWorkbook.Connections.Count
+    For c = 1 To cmax
+        Set cn = ThisWorkbook.Connections(c)
+        If cn.Name = "ThisWorkbookDataModel" Then IsPP = True
+    On Error Resume Next    'so it doesn't halt on either ODBC/OLEDB condition
+        cn.OLEDBConnection.BackgroundQuery = True
+        cn.ODBCConnection.BackgroundQuery = True
+        If InStr(cn.OLEDBConnection.SourceConnectionFile, ".odc") = 0 Then cn.OLEDBConnection.Connection = fn_Clean_Connection_String(cn.OLEDBConnection.Connection)
+        If InStr(cn.ODBCConnection.SourceConnectionFile, ".odc") = 0 Then cn.ODBCConnection.Connection = fn_Clean_Connection_String(cn.ODBCConnection.Connection)
+    On Error GoTo 0
+        If RecordResults Then
+        Application.EnableEvents = False
+            rAdminLog.Offset(c).Value = c   'index
+            rAdminLog.Offset(c, 1).Value = cn.Name  'name
+        Application.EnableEvents = bAEE
+        End If  'updated timestamp is done later
+    
+'    'background refresh this connection now, if it's not a QT or a PP model
+'        On Error Resume Next
+'        udt = 0
+'        udt = ThisWorkbook.Connections(c).ODBCConnection.RefreshDate                    'ODBC first
+'        If udt = 0 Then udt = ThisWorkbook.Connections(c).OLEDBConnection.RefreshDate   'OLEDB if it's not ODBC
+'        If udt <> 0 Then cn.Refresh
+'        udt = 0
+'        On Error GoTo 0
+    
+    Next c
+    
+'clear any other deleted Connections from below list
+    If RecordResults Then
+        If rAdminLog.Offset(c) <> "" Then ThisWorkbook.Sheets("admin").Range(rAdminLog.Offset(c, 2), rAdminLog.Offset(c).End(xlDown)).ClearContents
+    End If  'updated timestamp is done later
+
+''refresh QueryTable connections
+'    Dim wsq As Worksheet, qt As QueryTable, q As Byte
+'On Error Resume Next
+'    For Each wsq In ThisWorkbook.Worksheets
+'        q = 0
+'        q = wsq.ListObjects.Count
+'        If q > 0 Then
+'            AlwaysResultTrue = True     '!! is this necessary?
+'            Set qt = Nothing
+'            Set qt = wsq.ListObjects(q).QueryTable
+'            qt.Refresh
+'            Set qt = Nothing
+'        End If
+'    Next wsq
+'    Set wsq = Nothing
+'On Error GoTo 0
+
+'engage (but don't refresh) PowerPivot model (where applicable)
+'this gets stuck sometimes, but that's better than getting stuck during the RefreshAll
+    If IsPP Then
+        ThisWorkbook.Model.Initialize 'NOTE: if it's stuck here in VBA, press F5
+    End If
+
+'recalculate everything
+    ThisWorkbook.RefreshAll
+    
+'recalculate results (i.e. wait) until all PT & QT backgroundqueries have finished loading
+    Application.CalculateUntilAsyncQueriesDone
+
+
+'show standard Excel statusbar
+    Application.StatusBar = False
+'display Timer result in debug pane
+    If (Now - cvt) * 24 * 60 * 60 > 60 Then
+        Debug.Print "Done, took " & Int((Now - cvt) * 24 * 60) & " mins"
+    Else
+        Debug.Print "Done, took " & Int((Now - cvt) * 24 * 60 * 60) & " secs"
+    End If
+'did it refresh?
+    If AlwaysResultTrue Then
+    'let's just pretend it did... Background_Refresh_And_Wait result is True
+        Background_Refresh_And_Wait = True
+    Else
+    'did it refresh OK this time?
+        On Error Resume Next
+        ReDim bUpdateFailed(1 To cmax) As Boolean
+        Dim dOneUpdateFailed As Boolean
+        For c = 1 To cmax
+            udt = 0
+            'ODBC first
+            udt = ThisWorkbook.Connections(c).ODBCConnection.RefreshDate  'if it's stuck here, drag yellow arrow down to Drag_Here_If_It_Failed_At_udt
+            'OLEDB if it's not ODBC
+            If udt = 0 Then udt = ThisWorkbook.Connections(c).OLEDBConnection.RefreshDate  'if it's stuck here, drag yellow arrow down to Drag_Here_If_It_Failed_At_udt
+            If udt = 0 Then
+                bUpdateFailed(c) = True
+    Application.EnableEvents = False
+                If RecordResults Then rAdminLog.Offset(c, 2) = "PP/QT: no date"
+    Application.EnableEvents = bAEE
+            Else
+                If udt >= cvt Then  'updated time after start time
+                    bUpdateFailed(c) = True
+    Application.EnableEvents = False
+                    If RecordResults Then rAdminLog.Offset(c, 2) = udt
+    Application.EnableEvents = bAEE
+                Else
+                'Background_Refresh_And_Wait result is False
+                    dOneUpdateFailed = True
+                End If
+            End If
+        Next c
+Drag_Here_If_It_Failed_At_udt:
+        On Error GoTo 0
+    End If
+'success!  no updates failed, Background_Refresh_And_Wait result is True?
+    If dOneUpdateFailed = False Then Background_Refresh_And_Wait = True
+Application.DisplayAlerts = True
+xlB_UpdateFailed = 0
+Exit Function
+
+'add error reason codes here and text in modAuto code
+
+'        If xlB_UpdateFailed > bMaxDataModelRetries Then
+'            xlB_UpdateFailed = 1    'failure message is linked to this index
+'        Else
+'            Sleep 2000  'pause a bit
+'            xlB_UpdateFailed = xlB_UpdateFailed + 1  'tries it a set number of times (Private Const at top of module)
+'            GoTo TryDataModelReloadAgain
+'        End If
+    
+End Function
+
+Function fn_IsPP() As Boolean
+'v6.04 2017-12-27 14:39 - added Exit Function where no data model exists (saves 10s, prevents errors)
+'v6.03 2017-12-04 09:19 - last chance with the errorhandler, it just doesn't seem to work
+'v6.02 2017-11-17 09:06 - moved ThisWorkbook.Model.Initialize to this Sub to try and make errorhandler work
+'v6.01 2017-08-01 17:02 - complete rewrite, just looks for connection name
+On Error Resume Next
+Dim cn As Object, i As Integer
+For Each cn In ThisWorkbook.Connections
+    If cn.Name = "ThisWorkbookDataModel" Then
+        fn_IsPP = True
+On Error GoTo 0
+TryToInitialise:
+On Error GoTo ErrorHandlerCannotInitialise
+        ThisWorkbook.Model.Initialize   'NOTE: if VBA gets stuck here, just press F5, usually works
+        Exit Function
+    End If
+Next cn
+Exit Function
+ErrorHandlerCannotInitialise:
+Sleep 1000
+i = i + 1
+If i > 10 Then Exit Function
+GoTo TryToInitialise
+End Function
+
+Function fn_Connections_Block() As Range
+'v4.01 2017-06-29 10:02 - minor performance tweaks
+'v2.06 2017-02-20 14:55 - creates or sets formatting for Connections block
+'checks admin sheet and sets up Connections box
+
+On Error Resume Next
+Dim r As Range, sh As Worksheet
+Set sh = ThisWorkbook.Sheets("admin")
+If sh Is Nothing Then
+    MsgBox "FATAL ERROR: admin sheet missing", vbCritical, ""
+    End
+End If
+
+'look for Update Log block first as reference point for first column in Connections block
+'add (or re-add) range names alongside (this code lets us respecify the columns later if needed)
+    Set r = sh.Range("admin_UpdatedTime").EntireRow.Cells(cFirstColumnInConnectionsBox)
+    If r Is Nothing Then Exit Function
+    If r.EntireColumn.ColumnWidth <> 11.22 Then r.EntireColumn.ColumnWidth = 11.22
+    ThisWorkbook.Names.Add "admin_ConnIndex", r
+    If r.Value <> "Connections:" Then r.Value = "Connections:"
+    Set r = r.Offset(0, 1)
+    If r.EntireColumn.ColumnWidth <> 36 Then r.EntireColumn.ColumnWidth = 36
+    ThisWorkbook.Names.Add "admin_ConnName", r
+    If r.Value <> "Connection Name" Then r.Value = "Connection Name"
+    Set r = r.Offset(0, 1)
+    If r.EntireColumn.ColumnWidth <> 15 Then r.EntireColumn.ColumnWidth = 15
+    If r.EntireColumn.NumberFormat <> "yyyy-mm-dd hh:mm" Then r.EntireColumn.NumberFormat = "yyyy-mm-dd hh:mm"
+    ThisWorkbook.Names.Add "admin_ConnTime", r
+    If r.Value <> "Updated Time" Then r.Value = "Updated Time"
+    If r.Offset(0, 1) <> "" Then r.Offset(0, 1).ClearContents
+    
+'check it's done
+    Set r = Nothing
+    Set r = sh.Range("admin_ConnIndex")
+    If r Is Nothing Then Exit Function
+    Set fn_Connections_Block = r
+    
+'do the relevant formatting
+    With sh.Range(r, r.Offset(0, 2))
+        '.Select
+        If .Interior.ColorIndex <> cConnectionsBlockHeaderRowColorIndex Then .Interior.ColorIndex = cConnectionsBlockHeaderRowColorIndex
+        If .Font.Bold <> True Then .Font.Bold = True
+    End With
+
+End Function
+
+Function fn_Switch_Database_Server_In_Connections(ByVal sOldServer As String, ByVal sNewServer As String) As Byte
+'v6.00 2017-07-24 17:45 - added fn_Switch_Database_Server_In_Connections
+    
+Dim cn As Object, c As Byte, cmax As Byte, s As String, IsPP As Boolean, pp As String
+cmax = ThisWorkbook.Connections.Count
+For c = 1 To cmax
+    Set cn = ThisWorkbook.Connections(c)
+    If cn.Name = "ThisWorkbookDataModel" Then
+        IsPP = True
+    Else
+    On Error Resume Next    'so it doesn't halt on either condition
+        s = ""
+        'is it OLEDB?
+        s = cn.OLEDBConnection.Connection
+        If s <> "" Then
+        'yes, it's OLEDB
+            If InStr(s, "Data Source=" & sOldServer) > 0 Then
+                cn.OLEDBConnection.Connection = Replace(cn.OLEDBConnection.Connection, "Data Source=" & sOldServer, "Data Source=" & sNewServer)
+                fn_Switch_Database_Server_In_Connections = fn_Switch_Database_Server_In_Connections + 1
+            End If
+        Else
+        'is it ODBC?
+            s = cn.ODBCConnection.Connection
+            If s <> "" Then
+                If InStr(cn.ODBCConnection.Connection, "Data Source=" & sOldServer) > 0 Then
+                    cn.ODBCConnection.Connection = Replace(cn.ODBCConnection.Connection, "Data Source=" & sOldServer, "Data Source=" & sNewServer)
+                    fn_Switch_Database_Server_In_Connections = fn_Switch_Database_Server_In_Connections + 1
+                End If
+            End If
+        End If
+    On Error GoTo 0
+    End If
+Next c
+
+pp = "Updated " & fn_Switch_Database_Server_In_Connections & " PivotTable/QueryTable connections"
+If IsPP Then pp = pp & vbLf & vbLf & "ThisWorkbook contains a PowerPivot Data Model.  You have to update that manually.  Refer to baldmosher™ for advice."
+MsgBox pp, vbInformation, ""
+End Function
+
+Function fn_Clean_Connection_String(ByVal strConnectionString) As String
+'v7.02 2019-11-22 10:17 - fn_Clean_Connection_String: added new VMs to blunt list
+'v7.00 2018-07-09 15:11 - added fn_Clean_Connection_String
+'tested with OLEDBConnection, may not work with ODBC?
+'may need to add all P&C Insight users to BluntReplace?
+Dim a As Integer, b As Integer
+a = InStr(strConnectionString, "Workstation ID=")
+If a = 0 Then GoTo BluntReplace Else a = a + Len("Workstation ID=")
+b = InStr(a, strConnectionString, ";") - a
+fn_Clean_Connection_String = Replace(strConnectionString, Mid(strConnectionString, a, b), Environ("ComputerName"))
+Exit Function
+BluntReplace:
+strConnectionString = Replace(strConnectionString, "988XP32", Environ("ComputerName"))
+strConnectionString = Replace(strConnectionString, "lhr-reporter-01", Environ("ComputerName"))
+strConnectionString = Replace(strConnectionString, "lhr-report10-01", Environ("ComputerName"))
+strConnectionString = Replace(strConnectionString, "bg-lhr-pcins-01", Environ("ComputerName"))
+strConnectionString = Replace(strConnectionString, "bg-lhr-pcins-02", Environ("ComputerName"))
+strConnectionString = Replace(strConnectionString, "lhr-reports-01", Environ("ComputerName"))
+End Function
+
+Sub xlB_Remove_Read_Only_And_Save()
+'v8.00 2019-11-22 10:15 - added xlB_Remove_Read_Only_And_Save
+'allows for quick update of a report that's refreshed using Simple Refresh process
+If MsgBox("ThisWorkbook will be saved and made read only again." & vbLf & vbLf & "TAKE CARE!!!", vbOKCancel Or vbExclamation, "") = vbCancel Then Exit Sub
+SetAttr ThisWorkbook.FullName, vbNormal
+On Error Resume Next
+ThisWorkbook.ChangeFileAccess xlReadWrite
+On Error GoTo 0
+ThisWorkbook.Save
+SetAttr ThisWorkbook.FullName, vbReadOnly
+ThisWorkbook.ChangeFileAccess xlReadOnly
+MsgBox "ThisWorkbook was saved and made read only again"
+End Sub

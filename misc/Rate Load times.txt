@@ -1,0 +1,321 @@
+Destination	Supplier	TTL	TTC_COps	TTC_TT	TTC	Total
+Antigua	Drive-A-Matic	1		0.5	0.5	1.5
+Antigua	Hertz	1		0.5	0.5	1.5
+Argentina	Auto Mendoza	1	0.5		0.5	1.5
+Argentina	CDO Rent A Car	1	0.5		0.5	1.5
+Argentina	Cordoba Rent a Car	1	0.5		0.5	1.5
+Argentina	Europcar	1	0.5		0.5	1.5
+Argentina	Fit Car Rental	1	0.5		0.5	1.5
+Argentina	Full Rent Car Rental	1	0.5		0.5	1.5
+Argentina	Invernalia Rent A Car	1	0.5		0.5	1.5
+Argentina	KM Cero Rent a Car	1	0.5		0.5	1.5
+Argentina	Localiza	1	0.5		0.5	1.5
+Argentina	Master Rent A Car	1	0.5		0.5	1.5
+Argentina	Ocarrol	1	0.5		0.5	1.5
+Argentina	Rentar Low Cost	1	0.5		0.5	1.5
+Argentina	Street Rent A Car	1	0.5		0.5	1.5
+Argentina	Umove	0.5	0.5		0.5	1
+Argentina	VDS Rent a Car	1	0.5		0.5	1.5
+Armenia	Hertz	0.5		0.5	0.5	1
+Armenia	Naniko	0.5		0.5	0.5	1
+Aruba	Carvenience	1		0.5	0.5	1.5
+Aruba	Hertz	1		0.5	0.5	1.5
+Aruba	Sunset car rental	1		0.5	0.5	1.5
+Australia	Budget	0.5	0.5		0.5	1
+Austria	Fox Autorent	0.5		0.5	0.5	1
+Austria	U-Save	0.5		0.5	0.5	1
+Azerbaijan	Avis	0.5		0.5	0.5	1
+Azerbaijan	Carhire Baku	0.5		0.5	0.5	1
+Bahamas	Hertz	1		1	1	2
+Bahrain	Avis	0.5	0.5		0.5	1
+Bahrain	Regent Rent A Car	0.5	0.5		0.5	1
+Barbados	Bajan	1		0.5	0.5	1.5
+Barbados	Bajan Car Rentals	1		0.5	0.5	1.5
+Barbados	Bajan Car Rentals	1		0.5	0.5	1.5
+Barbados	Direct Car Rentals	1		0.5	0.5	1.5
+Barbados	Drive-a-Matic	1		0.5	0.5	1.5
+Belarus	Rentmotors	0.5		0.5	0.5	1
+Belarus	RentMotors LLC	0.5		0.5	0.5	1
+Belgium	Hertz	0.5		0.5	0.5	1
+Belgium	Interrent	0.5		0.5	0.5	1
+Bolivia	Avis	1		1	1	2
+Bolivia	Hertz	1		1	1	2
+Bonaire	Budget	1		0.5	0.5	1.5
+Bonaire	Hertz	1		0.5	0.5	1.5
+Bosnia	Carwiz	1		0.5	0.5	1.5
+Bosnia	Euro Rent a Car	1		0.5	0.5	1.5
+Bosnia	Guma X	0.5		0.5	0.5	1
+Bosnia	Kapitals	1		1	1	2
+Bosnia	Thrifty	0.5		0.5	0.5	1
+Brazil	Avis	1		0.5	0.5	1.5
+Brazil	BM Autolocadora	1		0.5	0.5	1.5
+Brazil	Budget	1		0.5	0.5	1.5
+Brazil	Hertz	1		0.5	0.5	1.5
+Brazil	Localiza	1		0.5	0.5	1.5
+Brazil	LocarX	1		0.5	0.5	1.5
+Brazil	Lokamig	1		0.5	0.5	1.5
+Brazil	Maggi Rentacar	1		0.5	0.5	1.5
+Brazil	Movida	1		0.5	0.5	1.5
+Brazil	National	1		0.5	0.5	1.5
+Brazil	Topo	1		0.5	0.5	1.5
+Brazil	Unidas	1		0.5	0.5	1.5
+Bulgaria	Autojet	1.5		1	1	2.5
+Bulgaria	Carrent	1		1	1	2
+Bulgaria	Yes Rent a Car	1		1	1	2
+Cambodia	Europcar	1		1	1	2
+Canada	Alamo	0.5		0.5	0.5	1
+Canada	Avis	0.5		0.5	0.5	1
+Canada	Budget	0.5		0.5	0.5	1
+Canada	Discount	0.5		0.5	0.5	1
+Canada	Dollar	0.5		0.5	0.5	1
+Canada	Enterprise	0.5		0.5	0.5	1
+Canada	Hertz	0.5		0.5	0.5	1
+Canada	National	0.5		0.5	0.5	1
+Canada	Thrifty	0.5		0.5	0.5	1
+Chile	Alamo	0.5		0.5	0.5	1
+Chile	Chilean Rent a Car	1.5	0.5		0.5	2
+Chile	Ecarent	1.5	0.5		0.5	2
+Chile	Econorent	1.5	0.5		0.5	2
+Chile	Euro Rent a Car	1.5	0.5		0.5	2
+Chile	Europcar Tattersall	1.5	0.5		0.5	2
+Chile	First Rent a Car	1.5	0.5		0.5	2
+Chile	Mitta Rent a Car	1.5	0.5		0.5	2
+Chile	Oclock Rent a Car	1.5	0.5		0.5	2
+Chile	Rosselot	1.5	0.5		0.5	2
+Chile	Sixt	1.5	0.5		0.5	2
+Chile	United Rent a Car	1.5	0.5		0.5	2
+Colombia	Primecar	1.5		1	1	2.5
+Colombia	Renta Facil	1.5		1	1	2.5
+Colombia	Royal Rent a Car	1.5		1	1	2.5
+Costa rica	Dollar	1.5	0.5		0.5	2
+Costa rica	Payless	1.5	0.5		0.5	2
+Croatia	Last minute	1.5		1	1	2.5
+Croatia	Thrifty	0.5		0.5	0.5	1
+Curacao	Hertz	1.5		1	1	2.5
+Curacao	Ross Car Rentals	1.5		1	1	2.5
+Curacao	Ross rental cars	1.5		1	1	2.5
+Cyaman Islands	Hertz	1		1	1	2
+Czech Republic	Budget	1		1	1	2
+Dominican Republic	Firefly	1.5		1	1	2.5
+Dominican Republic	Hertz	1.5		1	1	2.5
+Dominican Republic	Payless	1.5		1	1	2.5
+Dominican Republic	Thrifty	1.5		1	1	2.5
+Egypt	Avis	0.5	0.5		0.5	1
+Egypt	Budget	0.5	0.5		0.5	1
+Estonia	NU Car Rental	1		0.5	0.5	1.5
+Finland	Finn-rent	1		1	1	2
+France - Corsica	ADA	1		0.5	0.5	1.5
+French Guiana	Jumbo	1		1	1	2
+French Polynesia	Avis	0.5	0.5		0.5	1
+Georgia	Avis	1		0.5	0.5	1.5
+Georgia	Dollar	1		0.5	0.5	1.5
+Georgia	GTG Car Rental	1		1	1	2
+Georgia	Hertz	1		0.5	0.5	1.5
+Georgia	Naniko	0.5		0.5	0.5	1
+Georgia	RentMotors	0.5		0.5	0.5	1
+Georgia	Tbilisicars.com	0.5		0.5	0.5	1
+Georgia	Thrifty	1			0	1
+Germany	Alamo	0.5		0.5	0.5	1
+Germany	Enterprise	0.5		0.5	0.5	1
+Greece	Drive SA	0.5		0.5	0.5	1
+Grenada	Hertz	1		1	1	2
+Guadeloupe	Thrifty	1.5		1	1	2.5
+Guam	Nissan	0.5	0.5		0.5	1
+Guatemala	Guatemala Rent a car	1.5		1	1	2.5
+Haiti 	Hertz	1		1	1	2
+Holland	Europcar	1		1	1	2
+Holland	Hertz	0.5		1	1	1.5
+Hungary	Autonom	1.5		1	1	2.5
+Hungary	Budget	0.5		0.5	0.5	1
+Hungary	Fox Autorent				0	0
+Hungary	Schiller Rent A Car	1		0.5	0.5	1.5
+Hungary	U-Save	1.5		1	1	2.5
+Iceland	Geysir	0.5		0.5	0.5	1
+Iceland	Ice Rental Cars	1		1	1	2
+Iceland	Orange Car Rental	1		1	1	2
+Iceland	Procar	1.5		1	1	2.5
+Israel	Cal Auto	2	1		1	3
+Israel	Eldan	2	1		1	3
+Israel	Enterprise	0.5	0.5		0.5	1
+Israel	Europcar	1	0.5		0.5	1.5
+Israel	Hertz	0.5	0.5		0.5	1
+Italy	Avis	0.5		0.5	0.5	1
+Italy - Mainland	Avis	0.5		0.5	0.5	1
+Italy - Mainland	Goldcar	0.5		0.5	0.5	1
+Italy - Mainland	Interrent GC	0.5		0.5	0.5	1
+Italy - Mainland	Morini Rent	0.5		0.5	0.5	1
+Italy - Mainland	Rhodium	0.5		0.5	0.5	1
+Italy - Mainland 	Firefly	0.5		0.5	0.5	1
+Italy - Sardinia	Viten Group	0.5		0.5	0.5	1
+Italy - Sardinia 	Avis	0.5		0.5	0.5	1
+Italy - Sardinia 	Firefly	0.5		0.5	0.5	1
+Italy - Sardinia 	Goldcar	0.5		0.5	0.5	1
+Italy - Sardinia 	Interrent GC	0.5		0.5	0.5	1
+Italy - Sardinia 	Rhodium	0.5		0.5	0.5	1
+Italy - Sicily	Avis	0.5		0.5	0.5	1
+Italy - Sicily	Firefly	0.5		0.5	0.5	1
+Italy - Sicily	Goldcar	0.5		0.5	0.5	1
+Italy - Sicily	Interrent GC	0.5		0.5	0.5	1
+Italy - Sicily	Morini Rent	0.5		0.5	0.5	1
+Italy - Sicily	Rhodium	0.5		0.5	0.5	1
+Jamaica	Classique car rentals	1.5		1	1	2.5
+Japan	Avis	0.5		0.5	0.5	1
+Japan	Budget Japan	0.5		0.5	0.5	1
+Japan	Europcar	0.5		0.5	0.5	1
+Japan	JR Hokkaido	1		0.5	0.5	1.5
+Japan	Nico Nico	1		0.5	0.5	1.5
+Japan	Nippon	1		0.5	0.5	1.5
+Japan	Nissan	1		0.5	0.5	1.5
+Japan	Orix	1		0.5	0.5	1.5
+Japan	OTS	0.5		0.5	0.5	1
+Japan	Times	1		0.5	0.5	1.5
+Japan	Toyota	1		0.5	0.5	1.5
+Jordan	Avis	0.5	0.5		0.5	1
+Jordan	Budget	1	0.5		0.5	1.5
+Jordan	Dollar	1.5	1		1	2.5
+Jordan	Europcar	1	0.5		0.5	1.5
+Jordan	Interrent	0.5	0.5		0.5	1
+Jordan	Thrifty	1.5	1		1	2.5
+Korea	Hi Rent a car	1	0.5		0.5	1.5
+Korea	Jeju one car	1	0.5		0.5	1.5
+Korea	Jeju Rent a Car	1.5	0.5		0.5	2
+Korea	Lotte Rent a Car	1.5	0.5		0.5	2
+Korea	Sixt	0.5	0.5		0.5	1
+Kuwait	Budget	0.5	0.5		0.5	1
+Kuwait	Hertz	0.5	0.5		0.5	1
+Laos	Avis	0.5	0.5		0.5	1
+Laos	Budget	0.5	0.5		0.5	1
+Laos	Sixt	0.5	0.5		0.5	1
+Latvia	Auto5	0.5		0.5	0.5	1
+Latvia	Carwiz	0.5		0.5	0.5	1
+Lebanon	City Car	1	0.5		0.5	1.5
+Lithuania	ADC Rent	1.5		1	1	2.5
+Lithuania	Panek	1.5		1	1	2.5
+Macedonia	Hertz	1		1	1	2
+Macedonia	Interways	1.5		1	1	2.5
+Macedonia	Sharr Express	1.5		1	1	2.5
+Madeira	Bravacar	0.5		0.5	0.5	1
+Madeira	InsularCar	0.5		0.5	0.5	1
+Malaysia	Avis	0.5	0.5		0.5	1
+Malaysia	Europcar	0.5	0.5		0.5	1
+Malaysia	Hawk	1	0.5		0.5	1.5
+Malaysia	Hertz	0.5	0.5		0.5	1
+Malaysia	Kasina	0.5	0.5		0.5	1
+Malaysia	Keddy by Europcar	0.5	0.5		0.5	1
+Malaysia	KK Rent A Car	0.5	0.5		0.5	1
+Malaysia	Paradise	0.5	0.5		0.5	1
+Malaysia	Sixt	0.5	0.5		0.5	1
+Malta	Sixt Malta	0.5		0.5	0.5	1
+Martinique	Jumbo	2	0.5		0.5	2.5
+Martinique	Thrifty	2	0.5		0.5	2.5
+Mauritius	First Car Rental	1.5		1	1	2.5
+Mexico	adocar	1		0.5	0.5	1.5
+Mexico	Adocar Rental	1		0.5	0.5	1.5
+Mexico	Hertz	1		0.5	0.5	1.5
+Mexico	Payless	1		0.5	0.5	1.5
+Mexico	U-Save	1		0.5	0.5	1.5
+Morocco	Avis	2.5	2		2	4.5
+Morocco	Budget	2	1.5		1.5	3.5
+Morocco	Location Auto	1.5	1		1	2.5
+Morocco	Prepaid	2.5	2		2	4.5
+New Zealand	Drive NZ	1	0.5		0.5	1.5
+New Zealand	Go Rentals	0.5	0.5		0.5	1
+Norway	Hertz	1		0.5	0.5	1.5
+Oman	Avis	1	0.5		0.5	1.5
+Oman	Dollar	0.5	0.5		0.5	1
+Oman	Europcar	0.5	0.5		0.5	1
+Oman	Hertz	0.5	0.5		0.5	1
+Oman	Thrifty	1	0.5		0.5	1.5
+Panama	Dollar	1		1	1	2
+Paraguay	Alsa Rent a Car	1		0.5	0.5	1.5
+Paraguay	Hertz Diesa	1		0.5	0.5	1.5
+Paraguay	Localiza	1		0.5	0.5	1.5
+Paraguay	Sixt	1		0.5	0.5	1.5
+Peru	Alamo	1		0.5	0.5	1.5
+Peru	Avis	1		0.5	0.5	1.5
+Peru	Budget	1		0.5	0.5	1.5
+Peru	Europcar	1		0.5	0.5	1.5
+Peru	Hertz	1		0.5	0.5	1.5
+Peru	Sixt	1		0.5	0.5	1.5
+Philippines	Europcar	0.5	0.5		0.5	1
+Philippines	Hertz	0.5	0.5		0.5	1
+Philippines	International Car Rentals	0.5	0.5		0.5	1
+Poland	Carsson	1		0.5	0.5	1.5
+Poland	Panek	1.5		1	1	2.5
+Poland	Van Fleet	1		0.5	0.5	1.5
+Portugal	Turisprime	0.5		0.5	0.5	1
+Portugal - Azores	2Rent	1.5		1	1	2.5
+Portugal - Azores	Auto Turistica	0.5		0.5	0.5	1
+Portugal - Madeira	Bravacar	0.5		0.5	0.5	1
+Portugal - Madeira	InsularCar	0.5		0.5	0.5	1
+Puerto Rico	Dollar	1.5		1	1	2.5
+Puerto Rico	Popular Auto	1.5		1	1	2.5
+Puerto Rico	Thrifty	1.5		1	1	2.5
+Qatar	Europcar	0.5	0.5		0.5	1
+Qatar	Hertz	0.5	0.5		0.5	1
+Reunion	ITC	0.5	0.5		0.5	1
+Romania	Autonom	2		1	1	3
+Romania	Direct	1		1	1	2
+Romania	Direct Rent	1.5		1	1	2.5
+Romania	Drive2u	1		0.5	0.5	1.5
+Russia	Avis	0.5		0.5	0.5	1
+Russia	Beta Rent	1		1	1	2
+Russia	Budget	1		1	1	2
+Russia	RentMotors	0.5		0.5	0.5	1
+Russia	YODO	1		1	1	2
+Saipan	Toyota Rent A Car Pacific	0.5	0.5		0.5	1
+Saudi Arabia	Budget	0.5	0.5		0.5	1
+Singapore	Europcar	0.5	0.5		0.5	1
+Singapore	Roset	0.5	0.5		0.5	1
+Singapore	Sixt	0.5	0.5		0.5	1
+Slovakia	Budget	1		1	1	2
+Slovenia	Thrifty	0.5		0.5	0.5	1
+South Africa	Europcar	1	0.5		0.5	1.5
+South Africa	Thrifty	1	0.5		0.5	1.5
+Spain - Balearic Islands	Hiper Rent a Car	1.5		1	1	2.5
+Spain - Mainland	Autos Aguirre	2		1	1	3
+Spain - Mainland	Malco Rent a Car	0.5		0.5	0.5	1
+Sri Lanka	Budget	0.5	0.5		0.5	1
+Sri Lanka	Europcar	0.5	0.5		0.5	1
+Sri Lanka	SR Rent A Car	0.5	0.5		0.5	1
+St. Croix	Hertz	1		0.5	0.5	1.5
+St. Lucia	Hertz	1.5		1	1	2.5
+St. Martin	CCB Rent a Car	1.5		1	1	2.5
+St. Martin	Next Level	1.5		1	1	2.5
+Tahiti	Avis	1	0.5		0.5	1.5
+Taiwan	Avis	1	0.5		0.5	1.5
+Taiwan	Chailease	0.5	0.5		0.5	1
+Taiwan	Gipin	1	0.5		0.5	1.5
+Taiwan	IWS Rent A Car	1	0.5		0.5	1.5
+Taiwan	Pony car Rental	0.5	0.5		0.5	1
+Thailand	ASAP	0.5	0.5		0.5	1
+Thailand	Bizcar	0.5	0.5		0.5	1
+Thailand	Budget	0.5	0.5		0.5	1
+Thailand	Chic Car Rent	1	0.5		0.5	1.5
+Thailand	Europcar	0.5	0.5		0.5	1
+Thailand	Keddy by Europcar	0.5	0.5		0.5	1
+Thailand	National	0.5	0.5		0.5	1
+Thailand	Sixt	1	0.5		0.5	1.5
+Thailand	Thai Rent a Car	1	0.5		0.5	1.5
+Thailand	Thrifty	0.5	0.5		0.5	1
+Tunisia	Budget	1	1		1	2
+Turkey	Avec Car Rentals	1		0.5	0.5	1.5
+Turkey	Circular	1		0.5	0.5	1.5
+Turkey	Circular Car Hire	1.5	0.5		0.5	2
+Turkey	Europcar	0.5		0.5	0.5	1
+Turkey	Rent Go	1		0.5	0.5	1.5
+UAE	Budget	1	0.5		0.5	1.5
+UAE	Dollar	0.5	0.5		0.5	1
+UAE	Europcar Abu Dhabi	1	0.5		0.5	1.5
+UAE	Europcar Dubai	2	1		1	3
+UAE	Hertz	1	0.5		0.5	1.5
+UAE	Keddy by Europcar Abu Dhabi	1	0.5		0.5	1.5
+UAE	Keddy by Europcar Dubai	2	1		1	3
+UAE	National	0.5	0.5		0.5	1
+UAE	Thrifty	1	0.5		0.5	1.5
+UK	Europcar	2		1	1	3
+Ukraine	United	0.5		0.5	0.5	1
+Uruguay	Hertz	1.5		1	1	2.5
+Uruguay	Localiza	1.5		1	1	2.5
+USA	Hertz	0.5	0.5		0.5	1
+Venezuela	Amigos Car rental	1.5		0.5	0.5	2

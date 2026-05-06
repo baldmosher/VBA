@@ -1,0 +1,903 @@
+Attribute VB_Name = "modZip"
+'modZip
+'v9.04 2015-07-14 18:36
+
+'===========================================================================
+' HELP CONTACT
+'===========================================================================
+' DGF Help Contact: see BPMHelpContact module
+' Code is provided without warranty and can be stolen and amended as required.
+'   [redacted]
+'   ThomasJamesParish@outlook.com
+'   http://baldywrittencod.blogspot.com
+'=========================================================================
+
+'************************************************************
+'*****  WARNING: SETTINGS BELOW MAY NEED TO BE AMENDED  *****
+'************************************************************
+
+'===========================================================================
+' modZip
+'===========================================================================
+'   Various zipping functions.  Uses 7zip Command Line Utility (7za.exe)
+'   7zip is free for personal or business use   http://www.7zip.com/
+'
+'   Module self-installs (copies) 7zip from shared drive or SharePoint
+'   location(s) to [C:\Users\[userID]\Documents]\[zSubFolder]\[z7pth]\
+'
+'   Can easily be adapted to use WinZip or any command line utility,
+'   but pay careful attention to app-specific command line syntax.
+'
+'   Syntax to zip file(s):
+'       Zip7Sub [FilesPathFn], [ArchivePathFn], True
+'
+'   Also see:
+'       Sub syntax_to_zip_one_file()
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   None
+'
+'   Code included from other modules:
+'      [modSpecialFolders]
+'      [xlShellAndWait]
+
+'===========================================================================
+' Additional References required:
+'===========================================================================
+'   Microsoft Excel Object Library (if not running from Excel)
+
+'===========================================================================
+' External applications required:
+'===========================================================================
+'   None
+
+'=========================================================================
+' VERSION HISTORY
+'=========================================================================
+'v9.04 2015-07-14 18:36 - trying again!
+'v9.03a 2015-04-02 11:28  tried to email updates to author, but it doesn't work
+'v9.03 2015-01-29 11:42 - restored after iShare migration issue
+'v9.02 2014-09-30 13:33 - fixed for iShare migration
+'v9.01 2014-06-24 10:30 - added .xlsm for ProcStore.xlsm and other examples
+'v9.00aa 2014-06-24 10:24 - syntax_to_zip_one_file: moved to end of module for easy access
+'v9.00 2014-03-03 13:19 - added XLapp late binding
+'v8.04 2014-01-10 14:27 - Z7_Force_Connection - bugfix for zips (remove "" from ends)
+'v8.03 2014-01-09 18:13 - Z7_CloseExplorerWindow - bugfix to prevent errors with Internet Explorer shell windows
+'v8.02 2014-01-09 17:10 - Z7_CloseExplorerWindow - bugfix to prevent blank folder name
+'v8.01 2014-01-09 15:46 - Z7_Force_Connection - added bExplorerKill failsafe option to kill all Explorer windows (prevents leaving countless processes open - although rarely triggered)
+'v8.00 2014-01-10 10:28 - Z7_Force_Connection - checks/forces connection (to SharePoint) adapted from xlSharePoint v5.03
+'   v7.01   syntax_to_zip_one_file: zips .rwz file first (Outlook Rules Wizard)
+'   v7.01   syntax_to_zip_one_file: also zips .docx files
+'   v7.00   ZIP_EXE_pthfn: rebuild, uses secondary/tertiary install locations
+'   v6.00   included code from xlShellAndWait and modSpecialFolders
+'   v5.03   syntax_to_zip_one_file: improved validity check in non-Excel apps
+'   v5.02   syntax_to_zip_one_file: msgbox added
+'   v5.01   ZIP_EXE_copy: added z7exn
+'   v5.00a  annotations only
+'   v5.00   WINDOWS 7 ONLY: moved to C:\Users\All Users\BPM Tools\
+'           zlmax set to 2, now only refers to iShare sources (UNC then URL)
+'   v4.02   syntax_to_zip_one_file: now sources from GBMNCWSA050
+'   v4.01   bugfix: Application.Statusbar in non-Excel applications
+'           bugfix: xlShellAndWait is only possible in Excel
+'   v4.00   Zip7Sub: added zKillFirst and zRecurse options
+'           ZIP_EXE_copy: process massively improved
+'           annotations improved
+'   v3.08   bugfix
+
+Option Explicit
+
+'************************************************************
+'*****  WARNING: SETTINGS BELOW MAY NEED TO BE AMENDED  *****
+'************************************************************
+
+'zlmax = possible source locations in scope, MAX 2 in code  v5.00
+    Private Const zlmax As Byte = 4  'v5.00
+'users must have access to shared drive and SharePoint UNC/URL locations (read-only)
+'NB: SharePoint cannot host exe files, so remove file extension, ".exe" will be renamed during FileCopy
+    Private Const z7e1 As String = "\\ishare.dhl.com\sites\DGFUK\BPMpublic\Resources\"                  'v5.00
+    Private Const z7e2 As String = "\\ishareold.dhl.com\sites\DGFUK\BPMpublic\Resources\"                  'v5.00
+    Private Const z7e3 As String = "http://ishare.dhl.com/sites/DGFUK/BPMpublic/Resources/"             'v5.00
+    Private Const z7e4 As String = "http://ishareold.dhl.com/sites/DGFUK/BPMpublic/Resources/"             'v5.00
+'subfolders in local [C:\Users]\All Users\ folder to create for copying 7za.exe (can be "")
+    Private Const zSubFolder As String = "BPM Tools"  'use backslash to specify 2 deep e.g. "SubFolder1\SubFolder2"
+    Private Const z7pth As String = "7z"        'subfolder for 7zip                                     'v5.01
+'possible 7zip executable filenames
+    Private Const z7exe As String = "7za.exe"   'any location where .exe is permitted                   'v5.01
+    Private Const z7ext As String = "7za.ext"   'any location where .exe forbidden                      'v5.01
+    Private Const z7exn As String = "7za"       'any location where .exe forbidden, without extension   'v5.01
+
+'source: http://www.vboffice.net/sample.html?mnu=2&lang=en&smp=56&cmd=showitem&pub=6
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As Long)
+    Private Const zSleepTime As Long = 10000  'v5.03, time in ms, i.e. 10000 = 10s
+
+'==========================================================================
+'==========================================================================
+'==========================================================================
+'==========================================================================
+
+'
+'   Code from xlShellAndWait module:
+'
+
+Option Compare Text
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' modShellAndWait
+' By Chip Pearson, chip@cpearson.com, www.cpearson.com
+' This page on the web site: www.cpearson.com/Excel/ShellAndWait.aspx
+' 9-September-2008
+'
+' This module contains code for the ShellAndWait function that will Shell to a process
+' and wait for that process to end before returning to the caller.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Private Declare PtrSafe Function WaitForSingleObject Lib "kernel32" ( _
+    ByVal hHandle As Long, _
+    ByVal dwMilliSeconds As Long) As Long
+
+Private Declare PtrSafe Function OpenProcess Lib "kernel32.dll" ( _
+    ByVal dwDesiredAccess As Long, _
+    ByVal bInheritHandle As Long, _
+    ByVal dwProcessId As Long) As Long
+
+Private Declare PtrSafe Function CloseHandle Lib "kernel32" ( _
+    ByVal hObject As Long) As Long
+
+Private Const SYNCHRONIZE = &H100000
+
+Private Enum ShellAndWaitResult
+    Success = 0
+    Failure = 1
+    TimeOut = 2
+    InvalidParameter = 3
+    SysWaitAbandoned = 4
+    UserWaitAbandoned = 5
+    UserBreak = 6
+End Enum
+
+Private Enum ActionOnBreak
+    IgnoreBreak = 0
+    AbandonWait = 1
+    PromptUser = 2
+End Enum
+
+Private Const STATUS_ABANDONED_WAIT_0 As Long = &H80
+Private Const STATUS_WAIT_0 As Long = &H0
+Private Const WAIT_ABANDONED As Long = (STATUS_ABANDONED_WAIT_0 + 0)
+Private Const WAIT_OBJECT_0 As Long = (STATUS_WAIT_0 + 0)
+Private Const WAIT_TIMEOUT As Long = 258&
+Private Const WAIT_FAILED As Long = &HFFFFFFFF
+Private Const WAIT_INFINITE = -1&
+
+
+
+'==========================================================================
+'==========================================================================
+'==========================================================================
+'==========================================================================
+
+'
+'   Code from modSpecialFolders module:
+'
+
+'http://answers.microsoft.com/en-us/office/forum/office_2010-customize/how-2-refer-to-desktop/97eba910-54c9-409f-9454-6d7c8d54d009
+Private Declare PtrSafe Function SHGetSpecialFolderLocation _
+                         Lib "shell32" (ByVal hwnd As Long, _
+                                        ByVal nFolder As Long, ppidl As Long) As Long
+
+Private Declare PtrSafe Function SHGetPathFromIDList _
+                         Lib "shell32" Alias "SHGetPathFromIDListA" _
+                             (ByVal Pidl As Long, ByVal pszPath As String) As Long
+
+Private Declare PtrSafe Sub CoTaskMemFree Lib "ole32" (ByVal pvoid As Long)
+
+'Desktop
+Private Const CSIDL_INTERNET = &H1 'Internet Explorer (icon on desktop)
+Private Const CSIDL_PROGRAMS = &H2 'Start Menu\Programs
+Private Const CSIDL_CONTROLS = &H3 'My Computer\Control Panel
+Private Const CSIDL_PRINTERS = &H4 'My Computer\Printers
+Private Const CSIDL_PERSONAL = &H5 'My Documents
+Private Const CSIDL_FAVORITES = &H6 '<user name>\Favorites
+Private Const CSIDL_STARTUP = &H7 'Start Menu\Programs\Startup
+Private Const CSIDL_RECENT = &H8 '<user name>\Recent
+Private Const CSIDL_SENDTO = &H9 '<user name>\SendTo
+Private Const CSIDL_BITBUCKET = &HA '<desktop>\Recycle Bin
+Private Const CSIDL_STARTMENU = &HB '<user name>\Start Menu
+Private Const CSIDL_DESKTOPDIRECTORY = &H10 '<user name>\Desktop
+Private Const CSIDL_DRIVES = &H11 'My Computer
+Private Const CSIDL_NETWORK = &H12 'Network Neighborhood
+Private Const CSIDL_NETHOOD = &H13 '<user name>\nethood
+Private Const CSIDL_FONTS = &H14 'Windows\fonts
+Private Const CSIDL_TEMPLATES = &H15
+Private Const CSIDL_COMMON_STARTMENU = &H16 'All Users\Start Menu
+Private Const CSIDL_COMMON_PROGRAMS = &H17 'All Users\Programs
+Private Const CSIDL_COMMON_STARTUP = &H18 'All Users\Startup
+Private Const CSIDL_COMMON_DESKTOPDIRECTORY = &H19 'All Users\Desktop
+Private Const CSIDL_APPDATA = &H1A '<user name>\Application Data
+Private Const CSIDL_PRINTHOOD = &H1B '<user name>\PrintHood
+Private Const CSIDL_LOCAL_APPDATA = &H1C '<user name>\Local Settings\Application Data (non roaming)
+Private Const CSIDL_ALTSTARTUP = &H1D 'non localized startup
+Private Const CSIDL_COMMON_ALTSTARTUP = &H1E 'non localized common startup
+Private Const CSIDL_COMMON_FAVORITES = &H1F
+Private Const CSIDL_INTERNET_CACHE = &H20
+Private Const CSIDL_COOKIES = &H21
+Private Const CSIDL_HISTORY = &H22
+Private Const CSIDL_COMMON_APPDATA = &H23 'All Users\Application Data
+Private Const CSIDL_WINDOWS = &H24 'Windows Directory
+Private Const CSIDL_SYSTEM = &H25 'System Directory
+Private Const CSIDL_PROGRAM_FILES = &H26 'C:\Program Files
+Private Const CSIDL_MYPICTURES = &H27 'C:\Program Files\My Pictures
+Private Const CSIDL_PROFILE = &H28 'USERPROFILE
+Private Const CSIDL_SYSTEMX86 = &H29 'x86 system directory on RISC
+Private Const CSIDL_PROGRAM_FILESX86 = &H2A 'x86 C:\Program Files on RISC
+Private Const CSIDL_PROGRAM_FILES_COMMON = &H2B 'C:\Program Files\Common
+Private Const CSIDL_PROGRAM_FILES_COMMONX86 = &H2C 'x86 Program Files\Common on RISC
+Private Const CSIDL_COMMON_TEMPLATES = &H2D 'All Users\Templates
+Private Const CSIDL_COMMON_DOCUMENTS = &H2E 'All Users\Documents
+Private Const CSIDL_COMMON_ADMINTOOLS = &H2F 'All Users\Start Menu\Programs\Administrative Tools
+Private Const CSIDL_ADMINTOOLS = &H30 '<user name>\Start Menu\Programs\Administrative Tools
+Private Const CSIDL_CONNECTIONS = &H31 'Network and Dial-up Connections
+Private Const MAX_PATH = 260
+Private Const NOERROR = 0
+
+Private Function SpecFolder(ByVal lngFolder As Long) As String
+Dim lngPidlFound As Long
+Dim lngFolderFound As Long
+Dim lngPidl As Long
+Dim strPath As String
+
+strPath = Space(MAX_PATH)
+lngPidlFound = SHGetSpecialFolderLocation(0, lngFolder, lngPidl)
+If lngPidlFound = NOERROR Then
+    lngFolderFound = SHGetPathFromIDList(lngPidl, strPath)
+    If lngFolderFound Then
+        SpecFolder = Left$(strPath, _
+                           InStr(1, strPath, vbNullChar) - 1)
+    End If
+End If
+CoTaskMemFree lngPidl
+End Function
+
+'==========================================================================
+'==========================================================================
+'==========================================================================
+'==========================================================================
+
+Private Function ShellAndWait(ShellCommand As String, _
+                    TimeOutMs As Long, _
+                    ShellWindowState As VbAppWinStyle, _
+                    BreakKey As ActionOnBreak) As ShellAndWaitResult
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' ShellAndWait
+'
+' This function calls Shell and passes to it the command text in ShellCommand. The function
+' then waits for TimeOutMs (in milliseconds) to expire.
+'
+'   Parameters:
+'       ShellCommand
+'           is the command text to pass to the Shell function.
+'
+'       TimeOutMs
+'           is the number of milliseconds to wait for the shell'd program to wait. If the
+'           shell'd program terminates before TimeOutMs has expired, the function returns
+'           ShellAndWaitResult.Success = 0. If TimeOutMs expires before the shell'd program
+'           terminates, the return value is ShellAndWaitResult.TimeOut = 2.
+'
+'       ShellWindowState
+'           is an item in VbAppWinStyle specifying the window state for the shell'd program.
+'
+'       BreakKey
+'           is an item in ActionOnBreak indicating how to handle the application's cancel key
+'           (Ctrl Break). If BreakKey is ActionOnBreak.AbandonWait and the user cancels, the
+'           wait is abandoned and the result is ShellAndWaitResult.UserWaitAbandoned = 5.
+'           If BreakKey is ActionOnBreak.IgnoreBreak, the cancel key is ignored. If
+'           BreakKey is ActionOnBreak.PromptUser, the user is given a ?Continue? message. If the
+'           user selects "do not continue", the function returns ShellAndWaitResult.UserBreak = 6.
+'           If the user selects "continue", the wait is continued.
+'
+'   Return values:
+'            ShellAndWaitResult.Success = 0
+'               indicates the the process completed successfully.
+'            ShellAndWaitResult.Failure = 1
+'               indicates that the Wait operation failed due to a Windows error.
+'            ShellAndWaitResult.TimeOut = 2
+'               indicates that the TimeOutMs interval timed out the Wait.
+'            ShellAndWaitResult.InvalidParameter = 3
+'               indicates that an invalid value was passed to the procedure.
+'            ShellAndWaitResult.SysWaitAbandoned = 4
+'               indicates that the system abandoned the wait.
+'            ShellAndWaitResult.UserWaitAbandoned = 5
+'               indicates that the user abandoned the wait via the cancel key (Ctrl+Break).
+'               This happens only if BreakKey is set to ActionOnBreak.AbandonWait.
+'            ShellAndWaitResult.UserBreak = 6
+'               indicates that the user broke out of the wait after being prompted with
+'               a ?Continue message. This happens only if BreakKey is set to
+'               ActionOnBreak.PromptUser.
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Dim XLapp As Object
+If InStr(Application.Name, "Excel") > 0 Then Set XLapp = Application Else Set XLapp = CreateObject("Excel.Application")
+Dim TaskID As Long
+Dim ProcHandle As Long
+Dim WaitRes As Long
+Dim Ms As Long
+Dim MsgRes As VbMsgBoxResult
+Dim SaveCancelKey As XlEnableCancelKey  'NB: only works in Excel
+Dim ElapsedTime As Long
+Dim Quit As Boolean
+Const ERR_BREAK_KEY = 18
+Const DEFAULT_POLL_INTERVAL = 500
+
+If Trim(ShellCommand) = vbNullString Then
+    ShellAndWait = ShellAndWaitResult.InvalidParameter
+    Exit Function
+End If
+
+If TimeOutMs < 0 Then
+    ShellAndWait = ShellAndWaitResult.InvalidParameter
+    Exit Function
+ElseIf TimeOutMs = 0 Then
+    Ms = WAIT_INFINITE
+Else
+    Ms = TimeOutMs
+End If
+
+Select Case BreakKey
+    Case AbandonWait, IgnoreBreak, PromptUser
+        ' valid
+    Case Else
+        ShellAndWait = ShellAndWaitResult.InvalidParameter
+        Exit Function
+End Select
+
+Select Case ShellWindowState
+    Case vbHide, vbMaximizedFocus, vbMinimizedFocus, vbMinimizedNoFocus, vbNormalFocus, vbNormalNoFocus
+        ' valid
+    Case Else
+        ShellAndWait = ShellAndWaitResult.InvalidParameter
+        Exit Function
+End Select
+
+On Error Resume Next
+Err.Clear
+TaskID = Shell(ShellCommand, ShellWindowState)
+If (Err.Number <> 0) Or (TaskID = 0) Then
+    ShellAndWait = ShellAndWaitResult.Failure
+    Exit Function
+End If
+
+ProcHandle = OpenProcess(SYNCHRONIZE, False, TaskID)
+If ProcHandle = 0 Then
+    ShellAndWait = ShellAndWaitResult.Failure
+    Exit Function
+End If
+
+
+On Error GoTo ErrH:
+SaveCancelKey = XLapp.EnableCancelKey
+XLapp.EnableCancelKey = xlErrorHandler
+WaitRes = WaitForSingleObject(ProcHandle, DEFAULT_POLL_INTERVAL)
+Do Until WaitRes = WAIT_OBJECT_0
+    DoEvents
+    Select Case WaitRes
+        Case WAIT_ABANDONED
+            ' Windows abandoned the wait
+            ShellAndWait = ShellAndWaitResult.SysWaitAbandoned
+            Exit Do
+        Case WAIT_OBJECT_0
+            ' Successful completion
+            ShellAndWait = ShellAndWaitResult.Success
+            Exit Do
+        Case WAIT_FAILED
+            ' attach failed
+            ShellAndWait = ShellAndWaitResult.Success
+            Exit Do
+        Case WAIT_TIMEOUT
+            ' Wait timed out. Here, this time out is on DEFAULT_POLL_INTERVAL.
+            ' See if ElapsedTime is greater than the user specified wait
+            ' time out. If we have exceed that, get out with a TimeOut status.
+            ' Otherwise, reissue as wait and continue.
+            ElapsedTime = ElapsedTime + DEFAULT_POLL_INTERVAL
+            If Ms > 0 Then
+                ' user specified timeout
+                If ElapsedTime > Ms Then
+                    ShellAndWait = ShellAndWaitResult.TimeOut
+                    Exit Do
+                Else
+                    ' user defined timeout has not expired.
+                End If
+            Else
+                ' infinite wait -- do nothing
+            End If
+            ' reissue the Wait on ProcHandle
+            WaitRes = WaitForSingleObject(ProcHandle, DEFAULT_POLL_INTERVAL)
+            
+        Case Else
+            ' unknown result, assume failure
+            ShellAndWait = ShellAndWaitResult.Failure
+            Quit = True
+    End Select
+Loop
+
+CloseHandle ProcHandle
+XLapp.EnableCancelKey = SaveCancelKey
+Exit Function
+
+ErrH:
+Debug.Print "ErrH: Cancel: " & XLapp.EnableCancelKey
+If Err.Number = ERR_BREAK_KEY Then
+    If BreakKey = ActionOnBreak.AbandonWait Then
+        CloseHandle ProcHandle
+        ShellAndWait = ShellAndWaitResult.UserWaitAbandoned
+        XLapp.EnableCancelKey = SaveCancelKey
+        Exit Function
+    ElseIf BreakKey = ActionOnBreak.IgnoreBreak Then
+        Err.Clear
+        Resume
+    ElseIf BreakKey = ActionOnBreak.PromptUser Then
+        MsgRes = MsgBox("User Process Break." & vbCrLf & _
+            "Continue to wait?", vbYesNo)
+        If MsgRes = vbNo Then
+            CloseHandle ProcHandle
+            ShellAndWait = ShellAndWaitResult.UserBreak
+            XLapp.EnableCancelKey = SaveCancelKey
+        Else
+            Err.Clear
+            Resume Next
+        End If
+    Else
+        'Debug.Print "Unknown value of 'BreakKey': " & CStr(BreakKey)
+        CloseHandle ProcHandle
+        XLapp.EnableCancelKey = SaveCancelKey
+        ShellAndWait = ShellAndWaitResult.Failure
+    End If
+Else
+    ' some other error. assume failure
+    CloseHandle ProcHandle
+    ShellAndWait = ShellAndWaitResult.Failure
+End If
+
+XLapp.EnableCancelKey = SaveCancelKey
+
+End Function
+
+'==========================================================================
+'==========================================================================
+'==========================================================================
+'==========================================================================
+
+Function Zip7Sub(ByVal zPathFiles As String, ByVal zArchive As String _
+    , ByVal ZIP_IT As Boolean, Optional ByVal zKillFirst As Boolean = False _
+    , Optional ByVal zRecurse As Boolean = False) As Byte
+'v9.00 2014-03-03 13:19 - added XLapp late binding
+Dim XLapp As Object
+If InStr(Application.Name, "Excel") > 0 Then Set XLapp = Application Else Set XLapp = CreateObject("Excel.Application")
+'v8.00 2014-01-08 10:37 - added Z7_Force_Connection
+'v6.00 2013-08-08 10:48
+'find/setup 7zip on user's PC, and zip/unzip files
+'original source:  http://vb-helper.com/howto_shell_zip_and_unzip.html
+
+
+Dim ZIP_EXE As String, ZIP_CMD As String, ZIP_DEBUG As String, rslt As Byte
+Dim qm As String
+qm = Chr(34)
+
+'check/force connection to specified path
+If Z7_Force_Connection(zArchive) = False Then
+'can't connect, don't do it
+    rslt = 99
+    GoTo ErrorHandler
+End If
+
+'get ZIP_EXE, runs very long function, skip this when reviewing code stepwise
+ZIP_EXE = ZIP_EXE_copy
+
+If zKillFirst = True Then
+    If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = "Deleting existing archive... || " & zArchive
+    If Dir(zArchive) <> "" Then Kill zArchive   'write access is required for this location to Kill and then to Zip
+    If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = False
+End If
+
+ZIP_EXE = qm & ZIP_EXE & qm
+zArchive = qm & zArchive & qm
+zPathFiles = qm & zPathFiles & qm
+
+Dim zAction As String, zSwitches As String
+If ZIP_IT = True Then
+'append the source file to the target zip
+    'syntax: 7zip a <archive> <sourceFILE>
+    zAction = " a "
+    If InStr(zPathFiles, ".") = 0 Then Debug.Print "ZIP_CMD: file extension not specified in add path, maybe OK, zPathFiles:=" & zPathFiles & vbLf
+    zPathFiles = " " & zPathFiles
+    zSwitches = ""
+Else
+'extract the target zip to the 7z working directory and overwrite existing files
+    'syntax: 7zip e <archive> -o<outputPATH> -y
+    zAction = " e "
+    If InStr(zPathFiles, ".") <> 0 Then ZIP_DEBUG = ZIP_DEBUG & "ZIP_CMD: file extension should not be specified in extract path, maybe OK, zPathFiles:=" & zPathFiles & vbLf
+    zPathFiles = " -o" & zPathFiles
+    zSwitches = " -y "
+End If
+
+If zRecurse = True Then zSwitches = zSwitches & " -r "
+
+'set the command line
+ZIP_CMD = ZIP_EXE & zAction & zArchive & zPathFiles & zSwitches
+ZIP_DEBUG = ZIP_DEBUG & "ZIP_CMD: [" & ZIP_CMD & "]" & vbLf
+
+'do the zipping
+If InStr(Application.Name, "Excel") > 0 Then
+'use xlShellAndWait
+    XLapp.StatusBar = "Zipping to " & zArchive
+    rslt = Val(ShellAndWait(ZIP_CMD, 0, vbHide, PromptUser))
+    ZIP_DEBUG = ZIP_DEBUG & "ShellAndWait result: " & rslt
+Else
+'just use Shell
+    Shell ZIP_CMD
+End If
+
+ErrorHandler:
+'debug only on error
+If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = False
+If rslt <> 0 Then
+    Debug.Print ZIP_DEBUG
+    If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = "Zip failed, check Debug window || " & zArchive
+End If
+Zip7Sub = rslt
+
+End Function
+
+Function ZIP_EXE_copy() As String
+'v9.02 2014-09-30 13:33 - fixed for iShare migration
+'v9.00 2014-03-03 13:19 - added XLapp late binding
+Dim XLapp As Object
+If InStr(Application.Name, "Excel") > 0 Then Set XLapp = Application Else Set XLapp = CreateObject("Excel.Application")
+'v7.00 2013-08-15 12:58
+'installs (copies) 7za.exe from remote location to local folder
+'returns path & fn for copied file (or "" if not copied)
+
+If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = "Checking local machine for 7zip..."
+
+Dim ZIP_PTH(0 To zlmax) As String, z As Byte, pp As String
+Const tt As String = "Error in macro: ZIP_EXE_copy"
+Dim ZIP_EXE As String
+
+'check and/or create local 7zip app location
+ZIP_EXE = ZIP_EXE_pthfn(zSubFolder)      'local pth & fn
+ZIP_PTH(0) = Replace(ZIP_EXE, z7exe, "") 'local path
+'specify shared drive / iShare ZIP_EXE locations
+'if ZIP_PTH(0) not found, looks for z7eN (but only if zlmax >= N)
+If zlmax >= 1 Then ZIP_PTH(1) = z7e1
+If zlmax >= 2 Then ZIP_PTH(2) = z7e2
+If zlmax >= 3 Then ZIP_PTH(3) = z7e3
+If zlmax >= 4 Then ZIP_PTH(4) = z7e4
+'If zlmax >= 5 Then ZIP_PTH(5) = z7e5 'can add more if ever needed
+
+'test access to specified ZIP_PTH(z) location
+For z = 0 To zlmax
+'0 is local location, preferred, only looks for 1 if 0 not found
+    If z > 0 Then If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = "Checking remote locations for 7zip || " & ZIP_PTH(z)
+On Error Resume Next
+    If Dir(ZIP_PTH(z), vbDirectory) = "." Then
+    'folder exists, check for z7exe OR z7ext OR z7exn
+    'look for z7exe in ZIP_PTH(z)  (usually "7za.exe")
+        ZIP_EXE_copy = Dir(ZIP_PTH(z) & z7exe)  'sets this to z7exe if found
+        If ZIP_EXE_copy = z7exe Then Exit For
+    'look for z7ext in ZIP_PTH(z)  (usually "7za.ext")
+        ZIP_EXE_copy = Dir(ZIP_PTH(z) & z7ext)  'sets this to z7ext if found
+        If ZIP_EXE_copy = z7ext Then Exit For
+    'look for z7exn in ZIP_PTH(z)  (usually "7za")  'v5.01
+        ZIP_EXE_copy = Dir(ZIP_PTH(z) & z7exn)  'sets this to z7exn if found
+        If ZIP_EXE_copy = z7exn Then Exit For
+On Error GoTo 0
+    End If
+    'folder not found, try the next z
+Next z
+If ZIP_EXE_copy = vbNullString Then
+    pp = "Cannot find 7zip application"
+    MsgBox pp, vbCritical, tt
+    If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = False
+    Exit Function
+Else
+    If z > 0 And z <= zlmax Then
+        If InStr(UCase(Application.Name), UCase("Excel")) > 0 Then XLapp.StatusBar = "Copying 7zip to local machine..."
+        FileCopy ZIP_PTH(z) & ZIP_EXE_copy, ZIP_EXE  'renames to z7exe at destination, regardless of source filename
+        If Dir(ZIP_PTH(0) & z7exe) <> z7exe Then
+            pp = "Cannot copy 7zip application" & vbLf & "from:  " & vbLf & ZIP_PTH(z) & vbLf & "to:  " & ZIP_PTH(0)
+            MsgBox pp, vbCritical, tt
+            ZIP_EXE_copy = vbNullString
+            If InStr(UCase(Application.Name), UCase("Excel")) > 0 Then XLapp.StatusBar = False
+            Exit Function
+        End If
+    End If
+End If
+
+If InStr(Application.Name, "Excel") > 0 Then XLapp.StatusBar = False
+
+ZIP_EXE_copy = ZIP_EXE
+
+End Function
+ 
+Private Function ZIP_EXE_pthfn(Optional zUserSubFolder As String) As String
+'v7.00 2013-08-15 12:10
+'determines (and creates) usable ZIP_EXE location on user's PC
+
+'for Windows 7:
+'   > primary:   C:\Users\All Users\<zUserSubFolder>\7z\
+'   > secondary: C:\Users\<userID>\AppData\<zUserSubFolder>\7z\
+'   > tertiary:  C:\Users\<userID>\Documents\<zUserSubFolder>\7z\
+
+'for Windows XP:
+'   > primary:   C:\Documents and Settings\All Users\Application Data\<zUserSubFolder>\7z\
+'   > secondary: C:\Documents and Settings\<userID>\Application Data\<zUserSubFolder>\7z\
+'   > tertiary:  C:\Documents and Settings\<userID>\My Documents\<zUserSubFolder>\7z\
+
+Dim objFolders As Object, pth As String, fn As String
+Set objFolders = CreateObject("WScript.Shell").SpecialFolders
+
+Dim zInstallPath As String
+
+On Error Resume Next
+'primary:    \All Users\AppData\
+    zInstallPath = zpth_sl(SpecFolder(CSIDL_COMMON_APPDATA))
+    If zTestFolder(zInstallPath) = True Then GoTo zContinue
+'secondary:  \<userID>\AppData\
+    zInstallPath = zpth_sl(SpecFolder(CSIDL_APPDATA))
+    If zTestFolder(zInstallPath) = True Then GoTo zContinue
+'tertiary:   \<userID>\Documents\
+    zInstallPath = zpth_sl(SpecFolder(CSIDL_PERSONAL))
+    If zTestFolder(zInstallPath) = True Then GoTo zContinue
+
+zContinue:
+On Error GoTo 0
+
+If zUserSubFolder <> vbNullString Then
+'user specified subfolder, clean it first
+    zInstallPath = zInstallPath & zpth_sl(zfn_val(zUserSubFolder))   'removes special chars EXCEPT \
+Else
+'user didn't specify subfolder, use default Private Const zSubFolder
+    zInstallPath = zInstallPath & zpth_sl(zfn_val(zSubFolder))  'removes special chars EXCEPT \
+End If
+If Dir(zInstallPath, vbDirectory) <> "." Then MkDir zInstallPath
+
+zInstallPath = zInstallPath & zpth_sl(z7pth)
+If Dir(zInstallPath, vbDirectory) <> "." Then MkDir zInstallPath
+
+ZIP_EXE_pthfn = zInstallPath & z7exe
+
+Set objFolders = Nothing
+
+End Function
+
+Function zTestFolder(zTestPath) As Boolean
+'v7.00 2013-08-15 11:48
+'tests whether zTestPath is writeable by user
+
+Const zt As String = "ztest"
+Dim zp As String
+zp = zpth_sl(zTestPath) & zpth_sl(zt)
+On Error Resume Next
+    MkDir zp
+    If Dir(zp, vbDirectory) = "." Then zTestFolder = True Else Exit Function
+    If zTestFolder = True Then RmDir zTestPath 'NB: only removes if empty
+On Error GoTo 0
+
+End Function
+
+Function zpth_sl(ByVal PathToAddSlash As String, Optional DoURL As Boolean) As String
+'v6.01 2013-08-15 11:37
+'copied from CIRFiShare v2.36 2012-11-09 12:40
+'adds a slash to end of path as required
+'DoURL tries to force UNC but will be overridden if URL is 'detected'
+
+Const cFsl As String = "/"  'URL
+Const cBsl As String = "\"  'UNC
+Const cURL As String = "http://"
+
+'!! can only specify URL if DoURL=True
+If DoURL = True And Left(PathToAddSlash, Len(cURL)) <> cURL Then _
+    MsgBox "a URL must be specified if DoURL=True", vbCritical, "error in zpth_sl"
+
+'if Path includes http then override DoURL (NB: fn_ipth will determine UNC or URL)
+If DoURL = False And Left(PathToAddSlash, Len(cURL)) = cURL Then _
+    DoURL = True
+
+If DoURL = True And Right(PathToAddSlash, 1) <> cFsl Then
+    zpth_sl = PathToAddSlash & cFsl
+    Exit Function
+ElseIf Right(PathToAddSlash, 1) <> cBsl Then
+    zpth_sl = PathToAddSlash & cBsl
+    Exit Function
+Else
+    zpth_sl = PathToAddSlash
+End If
+
+End Function
+
+Private Function zfn_val(sFileName As String, Optional sReplaceInvalidWith As String = "") As String
+'v3.00 2012-11-01 12:05
+'Purpose   :    Removes invalid characters from a filename
+'Inputs    :    sFileName               The file name to clean the invalid characters from.
+'               [sReplaceInvalidWith]   The text to replace any invalid characters with.
+'Outputs   :    Returns a valid filename.
+'Author    :    Andrew Baker
+'Date      :    25/03/2001
+'Notes     :    http://www.vbusers.com/code/codeget.asp?ThreadID=578&PostID=1
+
+'NB: modZip version allows backslash
+'Const csInvalidChars As String = ":\/?*<>|"""
+Const csInvalidChars As String = ":/?*<>|"""
+
+Dim lThisChar As Long
+zfn_val = sFileName
+'Loop over each invalid character, removing any instances found
+For lThisChar = 1 To Len(csInvalidChars)
+    zfn_val = Replace$(zfn_val, Mid(csInvalidChars, lThisChar, 1), sReplaceInvalidWith)
+Next
+
+End Function
+
+Function Z7_Force_Connection(ByVal LocalOrUNC_PathOrFile As String _
+    , Optional ByVal bExplorerKill As Boolean = True) As Boolean
+'v8.04 2014-01-10 14:27 - bugfix for zips (remove "" from ends)
+'v8.01 2014-01-09 15:46 - added bExplorerKill failsafe option to kill all Explorer windows (prevents leaving countless processes open - although rarely triggered)
+'v8.00 2014-01-08 10:28 - adapted from xlSharePoint v5.03
+'v5.03 2014-01-08 10:24 - now accepts filenames at end of path
+'v5.02 2013-12-18 10:28 - added option for default UNCpath
+'v5.00 2013-12-02 16:17
+'NB: not suitable for end user processes, may close ALL instances of Windows Explorer (file browser)
+'1. launches UNC in Explorer window
+'2. tries to close Explorer
+'3. if 2 unsuccessful, kills all instances of Explorer then relaunches Taskbar
+
+'remove file name from pthfn and extract last folder name for Windows Explorer title bar
+Dim p As String, f As String, b As Integer, s() As Integer, c As Byte
+p = Replace(LocalOrUNC_PathOrFile, Chr(34), "")
+b = InStr(p, "\")
+While b > 0
+    c = c + 1  'count slashes
+    ReDim Preserve s(1 To c) As Integer  'add another slash character count
+    s(c) = b
+    b = InStr(s(c) + 1, p, "\")
+Wend
+If c > 0 Then
+    p = Left(p, s(c))   'full 'root' path without last filename (or folder name) so "C:\Folder\Filename.txt" > "C:\Folder\"
+    f = Mid(p, s(c - 1) + 1, s(c) - 1 - s(c - 1))   'folder name (in Explorer title bar) so "C:\Folder\Filename.txt" > "Folder"
+End If
+
+Z7_Force_Connection = True
+
+'easy option first, see if UNC already connected
+On Error Resume Next
+Dim testfn As String
+testfn = Dir(p, vbDirectory)
+If testfn = "." Then Exit Function
+On Error GoTo 0
+
+'open UNC in Explorer, try to close specific Explorer window
+ShellAndWait "explorer " & p, 10000, vbHide, AbandonWait
+If Z7_CloseExplorerWindow(f) = False Then  'v5.00
+'couldn't kill this specific opened Explorer task window
+    If bExplorerKill Then  'v8.01
+    'use brute force, close all Explorer windows, then relaunch Taskbar
+        ShellAndWait "TaskKill /F /IM ""explorer.exe""", 1000, vbHide, AbandonWait
+        Shell "C:\Windows\explorer.exe"
+    End If
+End If
+
+'test UNC connection
+On Error Resume Next
+testfn = Dir(p, vbDirectory)
+If testfn <> "." Then Z7_Force_Connection = False
+On Error GoTo 0
+
+End Function
+
+Function Z7_CloseExplorerWindow(ByVal sCurrentFolderName As String) As Boolean
+'v8.03 2014-01-09 18:12 - bugfix
+'v8.02 2014-01-09 17:10 - bugfix
+'v8.00 2014-01-08 10:09 - adapted from xlSharePoint v5.03
+'v5.00 2013-12-02 16:12
+'Function returns "True" if successful, otherwise "False"
+'Amended from Source:
+' http://gallery.technet.microsoft.com/scriptcenter/3879dd1b-09a1-4a9f-95ca-529351a7e2ac
+
+Dim bTest, wndw
+bTest = False
+With CreateObject("shell.application")
+    For Each wndw In .Windows
+        If wndw = "Windows Explorer" Then
+        If wndw.Document.Folder = sCurrentFolderName Then
+            On Error Resume Next
+            wndw.Quit
+            bTest = Err.Number = 0
+            On Error GoTo 0
+        End If
+        End If
+    Next
+End With ' shell.application
+Z7_CloseExplorerWindow = CStr(bTest)
+
+End Function
+
+Sub syntax_to_zip_one_file()
+'v9.04 2015-07-14 18:36 - trying again!
+'v9.03a 2015-04-02 11:28  tried to email updates to author, but it doesn't work
+'v9.03 2015-01-29 11:42 - restored after iShare migration issue
+'v9.02 2014-09-30 13:33 - fixed for iShare migration issue
+'v9.01 2014-06-24 10:30 - added .xlsm for ProcStore.xlsm and other examples
+'v7.02 2013-11-05 15:53
+'this example zips all .bas files to iShare (write access to BPMPrivate is required)
+
+    Dim zsrc() As String, ztgt As String, spth As String, ipth As String, fn As String
+    
+    spth = "\\GBMNCWSA050\BPMpublic\VBA Modules\" 'v4.02
+
+'make a copy of all .bas files to .txt
+    Dim s
+    s = Dir(spth & "*.bas")
+    While s <> ""
+        FileCopy spth & s, spth & "TXT backups\" & Replace(s, ".bas", ".txt")
+        s = Dir
+    Wend
+'zip all TXT
+    Zip7Sub spth & "TXT backups\*.txt", spth & "TXT backups\VBA Modules as TXT.zip", True, True
+    Sleep zSleepTime
+'email TXT zip to author
+    modEmail.SendEmail "ThomasJamesParish@outlook.com;bpm.gb@dhl.com", , , "VBA modules as TXT", "Attached modules in TXT format, save as .BAS and import into VBA", , spth & "TXT backups\VBA Modules as TXT.zip"
+    
+'On Error Resume Next
+'    zsrc = Dir(spth, vbDirectory)
+'On Error GoTo 0
+    ipth = "\\ishareold.dhl.com\sites\DGFUK\BPMpublic\VBA Modules\"
+    If Dir(ipth) = "" Then ipth = ipth = "\\isharenew.dhl.com\sites\DGFUK\BPMpublic\VBA Modules\"
+    
+    ReDim zsrc(0 To 3) As String
+    zsrc(0) = spth & "*.rwz"    'Outlook Rules
+    zsrc(1) = spth & "*.docx"   'documentation
+    zsrc(2) = spth & "*.bas"    'VB modules
+    zsrc(3) = spth & "*.xlsm"   'Excel macro enabled templates/examples
+    
+
+    ztgt = ipth & "VBA Modules.zip"
+
+    If Dir(zsrc(0)) = vbNullString Then MsgBox "zsrc not found"
+    
+    If InStr(Application.Name, "Excel") > 0 Then
+
+'if running from Excel: ShellAndWaitResult = Zip7Sub() As Byte
+        If Zip7Sub(zsrc(0), ztgt, True, True, True) = 0 _
+        And Zip7Sub(zsrc(1), ztgt, True, False, True) = 0 _
+        And Zip7Sub(zsrc(2), ztgt, True, False, True) = 0 _
+        And Zip7Sub(zsrc(3), ztgt, True, False, True) = 0 Then
+            MsgBox "Success!", vbInformation
+        Else
+            MsgBox "Failed!", vbExclamation
+        End If
+    Else
+
+'don't use xlShellAndWait if not in Excel
+On Error Resume Next
+        Kill ztgt    'error here means no connection to tgt
+        Zip7Sub zsrc(0), ztgt, True, True, True     'kill first
+        Zip7Sub zsrc(1), ztgt, True, False, True    'add to zip
+        Zip7Sub zsrc(2), ztgt, True, False, True    'add to zip
+        Zip7Sub zsrc(3), ztgt, True, False, True    'add to zip
+        Sleep zSleepTime
+        If Dir(ztgt) = "" Then
+            MsgBox "Failed! (But try a longer zSleepTime before panicking)", vbExclamation
+        Else
+            MsgBox "Success!", vbInformation
+        End If
+On Error GoTo 0
+    End If
+
+''NB: this doesn't work, Symantec AV strips out the attachment on sending
+''optionally, email update to author
+'    modEmail.SendEmail "ThomasJamesParish@outlook.com; bpm.gb@dhl.com", , , "Updated VBA Modules", , , ztgt
+
+End Sub

@@ -1,0 +1,481 @@
+Attribute VB_Name = "modVBAUpdater"
+Option Explicit
+Option Compare Text
+
+Public Const modVBAUpdaterCodeVer As String = _
+"modVBAUpdater v3.00"
+'v3.00 2017-01-25 11:31 - added code from http://stackoverflow.com/questions/19800184/vbcomponents-remove-doesnt-always-remove-module
+'v2.03 2017-01-24 13:03 - reverted back, doesn't use external xlApp object as it's causing issues
+'v2.02 2017-01-23 16:57 - bugfix for NA Domestic reports
+'v2.01 2017-01-16 14:07 - uses external xlApp object, adds comment on failure, deletes comment on success
+'v2.00 2016-11-01 12:13 - added ReplaceOneModule: rebuild to allow easier self-updates
+'v1.06 2016-11-01 11:51 - increased max file size to cover KPI PP report
+'v1.05 2016-09-20 15:45 - bugfix
+'v1.04 2016-09-16 13:32 - only add admin sheets if modAuto is in the file
+'v1.03 2016-08-30 13:11 - checks if mandatory admin sheets are present
+'v1.02 2016-08-30 12:05 - added sheet refs for Ranges, added mmax, changed cMaxFileSize to Private Const
+'v1.01 2016-05-11 09:34 - make open wbTarget active
+'v1.00 2016-05-03 17:30 - first working version
+
+Private ModuleName() As String
+Private Const cMaxFileSize As Long = 500000000  '500MB
+Private bReplacedModule As Boolean
+
+Public Function modVBAUpdaterVer() As String
+modVBAUpdaterVer = modVBAUpdaterCodeVer
+End Function
+
+Sub ReplaceVBAModules(ByRef DoAllMasters As Boolean, Optional DoOnlyThisWorkbook As Boolean)
+'v2.03 2017-01-24 13:03 - reverted back, doesn't use external xlApp object as it's causing issues
+'v2.01 2017-01-16 14:07 - uses external xlApp object, adds comment on failure, deletes comment on success
+'v1.06 2016-12-16 15:03 - logs current module versions from Generic Sheets modules in row 1
+'v1.05 2016-09-20 15:45 - bugfix
+'v1.02 2016-08-30 12:05 - added sheet refs for Ranges, added mmax, changed cMaxFileSize to Private Const
+'v1.01 2016-05-11 09:34 - make open wbTarget active
+'v1.00 2016-05-03 17:30 - first version
+
+'this allows us to Debug > Compile before closing wbTarget
+'doesn't work after Skype update
+'Dim objVBECommandBar As Object, compileMe As Variant
+'Set objVBECommandBar = Application.VBE.CommandBars
+
+    Dim ModulePath As String, PathToFiles As String
+    ModulePath = updVBA_Settings.Range("admin_PathModules")
+    PathToFiles = updVBA_Settings.Range("admin_PathMasters")
+    
+    Dim rModuleList As Range, m As Byte, mmax As Byte
+    'first cell showing what to check & update
+    Set rModuleList = updVBA_Files.Range("admin_Modules")
+    'first to last cell showing what to check & update
+    Set rModuleList = updVBA_Files.Range(rModuleList.Offset(0, 1), rModuleList.End(xlToRight))
+On Error GoTo ErrorTooManyModules
+    mmax = rModuleList.Cells.Count
+On Error GoTo 0
+    ReDim ModuleName(1 To mmax) As String
+    For m = 1 To mmax
+        ModuleName(m) = rModuleList.Cells(m)
+    Next m
+    
+    
+    Dim rFileList As Range, f As Integer
+    Set rFileList = updVBA_Files.Range("admin_Files")
+    'If rFileList.Offset(1) <> "Dummy Row - Don't Delete This" Then GoTo ErrorNoDummyInFileList
+    Set rFileList = updVBA_Files.Range(rFileList.Offset(1), rFileList.End(xlDown))
+
+
+    Dim lngFileCounter As Long, wbTarget As Workbook
+    Dim dFileSizeBytes As Double
+
+    
+    
+    Application.EnableEvents = False
+    Application.CalculateBeforeSave = False
+    
+    
+    Dim xlApp As Excel.Application
+    
+    Dim sPath As String
+    Dim sFil As String
+    Dim strName As String
+    'Dim sVersionResult As String
+    'Dim oModule As Object
+    Dim bSaveThisFile As Boolean
+    Dim w As Byte
+    
+    sPath = PathToFiles
+    
+    'Search for files in list to check they are still present
+    
+    For f = 1 To rFileList.Cells.Count
+        If rFileList.Cells(f).Offset(0, 1) < DateValue("2099-12-31") Then
+            sFil = Dir(sPath & rFileList.Cells(f))
+            If sFil = "" Then
+            'file not found
+                rFileList.Cells(f).Interior.Color = 12040422  'pink
+                On Error Resume Next
+                    rFileList.Cells(f).Hyperlinks.Delete
+                    rFileList.Cells(f).Comment.Delete
+                    rFileList.Cells(f).Font.ColorIndex = -4105
+                On Error GoTo 0
+                rFileList.Cells(f).AddComment "COULD NOT FIND FILE " & Now
+                rFileList.Cells(f).Font.Bold = True
+            Else
+            'file found
+                On Error Resume Next
+                    rFileList.Cells(f).Comment.Delete
+                On Error GoTo 0
+                rFileList.Cells(f).Hyperlinks.Add rFileList.Cells(f), sPath & rFileList.Cells(f)
+                rFileList.Cells(f).Interior.ColorIndex = 0
+                rFileList.Cells(f).Font.Bold = False
+            End If
+        End If
+    Next f
+
+    'Search for files in folder that we want to replace code module
+    If DoAllMasters Then
+        sFil = Dir(sPath & "*.xlsb")
+    ElseIf DoOnlyThisWorkbook Then
+        w = w + 1
+        sFil = ThisWorkbook.Name
+    Else
+        w = w + 1
+        sFil = Workbooks(w).Name
+    End If
+    
+    Dim MyObj As Object, MySource As Object, MyFile As Variant
+    Set MyObj = New FileSystemObject
+    Set MySource = MyObj.GetFolder(sPath)
+    For Each MyFile In MySource.Files
+        sFil = MyFile.Name
+        If Right(sFil, 5) <> ".xlsb" Then GoTo NextFile
+        
+        If DoAllMasters Then
+            strName = sPath & sFil  'this file
+            dFileSizeBytes = 0
+            dFileSizeBytes = FileLen(strName)
+            If dFileSizeBytes > cMaxFileSize Then GoTo ErrorFileTooBig
+            If Left(sFil, 2) = "~$" Then GoTo NextFile  'temp files are out of scope
+        Else
+            If Workbooks(w).Name = "PERSONAL.xlsb" Then GoTo NextFile
+            If Workbooks(w).Name = ThisWorkbook.Name And DoOnlyThisWorkbook = False Then GoTo NextFile
+            sFil = Workbooks(w).Name
+            strName = Workbooks(w).FullName
+        End If
+        
+        On Error Resume Next
+FindFileInList:
+        f = 0
+        f = Application.Match(sFil, rFileList, 0)
+        If f = 0 Then
+        'new file, add it to the bottom of the list and extend the list by 1
+            rFileList.Cells(rFileList.Cells.Count).Offset(1) = sFil
+            Set rFileList = updVBA_Files.Range(rFileList.Cells(1), rFileList.End(xlDown))
+            GoTo FindFileInList
+        End If
+        If DoAllMasters Then
+        'is it recently updated?
+            If rFileList.Cells(f).Offset(0, 1) >= updVBA_Settings.Range("admin_UpdateBefore") Then
+                Debug.Print "Bypassed " & sFil & ", already updated after max date"
+                On Error Resume Next
+                rFileList.Cells(f).Comment.Delete
+                'rFileList.Cells(f).AddComment "Bypassed " & sFil & ", already updated after max date"
+                On Error GoTo 0
+                GoTo NextFile
+            End If
+        'does file not exist?
+            If dFileSizeBytes = 0 Then
+                Debug.Print "Bypassed " & sFil & ", file not found at " & strName
+                On Error Resume Next
+                rFileList.Cells(f).Comment.Delete
+                rFileList.Cells(f).AddComment "Bypassed " & sFil & ", file not found at " & strName
+                On Error GoTo 0
+                rFileList.Cells(f).Offset(0, 1) = "not found"
+                GoTo NextFile
+            End If
+        End If
+        On Error GoTo 0
+        
+        bSaveThisFile = False   'resets boolean
+         
+    'open the workbook
+        Application.EnableEvents = False
+        Application.DisplayAlerts = False
+        Application.Calculation = xlCalculationManual
+        If DoAllMasters Then
+            Application.StatusBar = "Opening: " & strName
+            Debug.Print "Opening " & strName
+            Set wbTarget = Workbooks.Open(strName, False, False)
+            Application.Calculation = xlCalculationManual
+        Else
+            Debug.Print "Processing open workbook in this Excel session: " & strName
+            Set wbTarget = Workbooks(w)
+        End If
+        If Not wbTarget Is Nothing Then wbTarget.Activate
+        If InStr(Application.Caption, "read-only") > 0 Then
+    'if read-only, just close it and don't update the timestamp
+            wbTarget.Close bSaveThisFile
+            Application.StatusBar = "Closed read-only workbook " & strName
+            Debug.Print "Closed read-only workbook " & strName
+            On Error Resume Next
+            rFileList.Cells(f).Comment.Delete
+            rFileList.Cells(f).AddComment "Closed read-only " & strName
+            On Error GoTo 0
+        Else
+        On Error Resume Next
+            
+    'otherwise, process it
+            Application.StatusBar = "Processing " & strName
+            Debug.Print "Processing " & strName
+    
+    'replace any existing modules with standard .bas files in \Automation\VBA\
+            bSaveThisFile = ReplaceModulesInWorkbook(wbTarget, ModulePath, mmax, f, rFileList)
+            
+            
+    'replace the MACROS sheet with the one in this workbook
+    '(similar process if any other "master" sheets can be included in this workbook)
+            If wbTarget.Name <> ThisWorkbook.Name Then Call ReplaceMACROSsheet(wbTarget)
+    
+    
+    'NB: this fails on compile - need to record it, can we?
+    'now we Debug > Compile the project
+    'Set compileMe = objVBECommandBar.FindControl(Type:=msoControlButton, ID:=578)
+    'compileMe.Execute
+    
+            'close the workbook (and save if applicable)
+            If DoAllMasters Then
+                ThisWorkbook.Save
+                wbTarget.Close bSaveThisFile
+            End If
+            
+        On Error GoTo 0
+            
+        End If  'test for read-only
+    
+   
+NextFile:
+        If Not DoAllMasters Then 'just do open file(s)
+            w = w + 1
+            If w > Workbooks.Count Then GoTo CleanUp
+            sFil = Workbooks(w).Name
+        End If
+    
+    Next MyFile
+
+GoTo CleanUp
+
+
+ErrorTooManyModules:
+    MsgBox "mmax > 255, check the module list", vbCritical, "Error: Too Many Modules"
+    GoTo CleanUp
+
+ErrorNoDummyInFileList:
+    MsgBox "Check the file list, first should always be Dummy Row", vbCritical, "Error: No Dummy In File List"
+    GoTo CleanUp
+
+ErrorFileTooBig:
+    Debug.Print "Bypassed " & sFil & ", workbook over size limit"
+    GoTo NextFile
+
+CleanUp:
+    On Error GoTo 0
+    Application.EnableEvents = True
+    Application.CalculateBeforeSave = True
+    Application.StatusBar = False
+End Sub
+
+Function ReplaceModulesInWorkbook(ByRef wbTarget As Workbook _
+    , ByRef ModulePath As String, ByRef ModuleCount As Byte _
+    , ByRef FileRowNumber As Integer, ByRef rFileList As Range) As Boolean
+'v2.01 2017-01-16 14:07 - adds comment on failure, deletes comment on success
+'v1.04 2016-09-16 13:32 - only add admin sheets if modAuto is in the workbook
+'v1.03 2016-08-30 13:11 - check if mandatory admin sheets are present
+'v1.00 2016-05-03 17:30 - first version
+
+On Error Resume Next
+
+Dim m As Byte, f As Integer, oModule As Object
+
+'this controls later on whether we should copy the admin sheets
+Dim bAutomated As Boolean
+Set oModule = wbTarget.VBProject.VBComponents("modAuto")
+If Not oModule Is Nothing Then bAutomated = True
+
+bReplacedModule = False 'reset Private switch
+
+Dim CurrentModuleResult As String   'either version number or X or ""
+f = FileRowNumber
+For m = 1 To ModuleCount
+    CurrentModuleResult = ""
+    CurrentModuleResult = ReplaceOneModule(ModulePath, ModuleName(m), wbTarget, bAutomated)
+    If CurrentModuleResult = "" Then
+    'module not in workbook
+        rFileList.Cells(f).Offset(0, 1 + m).ClearContents
+    Else
+    'Record the version number (or X)
+        rFileList.Cells(f).Offset(0, 1 + m) = CurrentModuleResult
+    'delete the comment if it's processed OK
+        On Error Resume Next
+        rFileList.Cells(f).Comment.Delete
+        On Error GoTo 0
+    End If
+Next m
+
+'Record the date/time we've updated this workbook (only if all modules have processed OK)
+rFileList.Cells(f).Offset(0, 1) = Now
+
+ReplaceModulesInWorkbook = bReplacedModule    'if any were updated, triggers save
+
+End Function
+
+Function ReplaceOneModule(ByVal ModulePath As String, ByVal ModuleName As String _
+    , Optional wbTarget As Workbook, Optional bAutomated As Boolean _
+    , Optional AddModuleIfMissing As Boolean) As String
+'v3.00 2017-01-25 11:31 - added code from http://stackoverflow.com/questions/19800184/vbcomponents-remove-doesnt-always-remove-module
+'v2.02 2017-01-23 16:57 - bugfix for NA Domestic reports
+'v2.00 2016-11-01 12:13 - rebuild to allow easier self-updates
+
+On Error Resume Next
+
+If wbTarget Is Nothing Then Set wbTarget = ThisWorkbook
+If ModuleName = "" Then Exit Function
+
+Dim oModule As Object, wsSource As Worksheet
+
+'force removal of _OLD module, if it's still there from last update
+    Set oModule = Nothing
+    Set oModule = wbTarget.VBProject.VBComponents(ModuleName & "_OLD")
+    If Not oModule Is Nothing Then
+        wbTarget.VBProject.VBComponents.Remove oModule
+    End If
+
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+
+If Not oModule Is Nothing Then
+'this module is already present...
+'First we need to REMOVE the existing module(s)...
+    If ModuleName = "modExtra" _
+    Or ModuleName = "pivValidate" _
+    Or Left(ModuleName, 5) = "admin" Then
+'NEVER remove or add these modules/sheets, just mark them as present or not
+        ReplaceOneModule = "X"    'default entry
+    Else
+'remove & re-add module
+        With wbTarget.VBProject.VBComponents
+            If oModule.Type = 1 Then    'code module as opposed to sheet/workbook item
+                oModule.Name = ModuleName & "_OLD"
+                .Remove .Item(ModuleName & "_OLD")
+            Else
+                .Remove .Item(ModuleName)
+            End If
+        End With
+    'test - has it deleted?
+        Set oModule = Nothing
+        Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+        If oModule Is Nothing Then
+        'Now we can import the new module(s)
+            If Dir(ModulePath & ModuleName & ".bas") = "" Then
+            'couldn't import the module
+                MsgBox wbTarget.Name & " couldn't access " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged." & vbLf & vbLf & ModulePath & ModuleName & ".bas", vbCritical, ""
+                End
+            End If
+            wbTarget.VBProject.VBComponents.Import ModulePath & ModuleName & ".bas"
+            Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+            If Not oModule Is Nothing Then
+            'Can we get the version number from the module?
+                ReplaceOneModule = "X"    'default entry
+                ReplaceOneModule = Replace(Application.Run("'" & wbTarget.FullName & "'!" & ModuleName & "Ver"), ModuleName & " ", "")     'actual version number
+            'Set the save switch to True
+                bReplacedModule = True
+            Else
+            'couldn't import the module
+                MsgBox wbTarget.Name & " failed to import " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+                End
+            End If
+        'force removal of _OLD module, if it's still there
+            Set oModule = Nothing
+            Set oModule = wbTarget.VBProject.VBComponents(ModuleName & "_OLD")
+            If Not oModule Is Nothing Then
+                wbTarget.VBProject.VBComponents.Remove oModule
+                If Not oModule Is Nothing Then
+                'it hasn't deleted the module - don't add it again and don't log it, just quit
+                    MsgBox wbTarget.Name & " failed to delete " & ModuleName & "_OLD" & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+                    End
+                End If
+            End If
+        Else
+        'it hasn't deleted the module - don't add it again and don't log it, just quit
+            MsgBox wbTarget.Name & " failed to delete " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+            End
+        End If
+    End If
+Else
+'this module is NOT present...
+'so do we need to add it?
+    If ModuleName = "modExtra" Or AddModuleIfMissing Then
+    'always add this module if absent - NEVER remove it
+        wbTarget.VBProject.VBComponents.Import ModulePath & ModuleName & ".bas"
+        ReplaceOneModule = "X"    'default entry
+    ElseIf (bAutomated And ModuleName = "pivValidate") _
+        Or (bAutomated And Left(ModuleName, 5) = "admin") _
+    Then
+    'always copy this sheet from Generic Sheets for Automation if missing
+        Set oModule = ThisWorkbook.VBProject.VBComponents(ModuleName)
+        Set wsSource = ThisWorkbook.Sheets(oModule.Properties("Name").Value)
+        wsSource.Copy After:=wbTarget.Sheets(wbTarget.Sheets.Count)
+        ReplaceOneModule = "X"    'default entry
+    Else
+    'Module not in file - clear marker from checklist before re-importing
+        ReplaceOneModule = ""
+    End If
+End If
+'remove any modModule1, modModule2, etc.
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 1)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 2)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 3)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+
+End Function
+
+Sub ReplaceMACROSsheet(wbTarget As Workbook)
+'v1.00 2016-05-03 17:30 - first version
+'completely replaces the MACROS sheet in target file with the master version in this file
+
+'quit if no admin sheet exists (auto-adds MACROS)
+If xlU_SheetExists("admin", wbTarget) = False Then Exit Sub
+
+Dim nm As Name
+'delete the worksheet from target
+Application.DisplayAlerts = False
+    wbTarget.Sheets("admin").Visible = xlSheetVisible 'must have one visible sheet remaining
+    
+    If xlU_SheetExists("MACROS", wbTarget) Then
+        wbTarget.Sheets("MACROS").Visible = xlSheetVisible 'must be visible to delete it
+        wbTarget.Sheets("MACROS").Delete
+    End If
+    If xlU_SheetExists("MACROS (2)", wbTarget) Then
+        wbTarget.Sheets("MACROS (2)").Visible = xlSheetVisible 'must be visible to delete it
+        wbTarget.Sheets("MACROS (2)").Delete
+    End If
+Application.DisplayAlerts = True
+'delete any duff Names from target relating to the deleted sheet
+    For Each nm In wbTarget.Names
+        If InStr(nm.RefersTo, "MACROS") > 0 Then nm.Delete
+    Next nm
+    Dim iVis As Integer
+    iVis = wbTarget.Sheets(1).Visible
+    If iVis <> xlSheetVisible Then wbTarget.Sheets(1).Visible = xlSheetVisible
+    ThisWorkbook.Sheets("MACROS").Copy Before:=wbTarget.Sheets(1)
+    If iVis <> xlSheetVisible Then wbTarget.Sheets(2).Visible = xlSheetVeryHidden
+'delete any duff Names from target relating to this workbook
+    With wbTarget.Sheets("MACROS")
+        .Unprotect
+    For Each nm In wbTarget.Names
+        If InStr(nm.RefersTo, ThisWorkbook.Name) > 0 Then nm.Delete
+    Next nm
+        .Protect
+    End With
+
+End Sub
+
+Private Function xlU_SheetExists(ByVal wsname As String _
+    , Optional ByRef wb As Workbook) As Boolean
+'from xlUtils v7.01 2013-04-12 15:00
+'returns TRUE if the sheet exists in the active (or specified) workbook
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+xlU_SheetExists = False
+On Error GoTo NoSuchSheet
+If Len(wb.Sheets(wsname).Name) > 0 Then
+    xlU_SheetExists = True
+    Exit Function
+End If
+
+NoSuchSheet:
+End Function

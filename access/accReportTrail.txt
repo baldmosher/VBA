@@ -1,0 +1,269 @@
+Attribute VB_Name = "accReportTrail"
+Option Explicit
+Option Compare Database
+Private Const sPandCRT As String = "Y:\RT\"
+'Private Const sPathFile As String = "\\company.local\BackOffice\P&C\RT\Automation\Logging\TXT\import.txt"
+Private Const sLogPath As String = "\\company.local\BackOffice\P&C\RT\Automation\Logging\TXT\"
+Private Const sDBbePath As String = "\\company.local\BackOffice\P&C\RT\Automation\Logging\Report Trail_be.accdb"
+Private Const cSpc As String = " "
+Private Const cFsl As String = "/"
+Private Const cBsl As String = "\"
+
+Function fn_Append_All_Logfiles(ByVal sFileExt As String)
+'cycle through sLogPath folder and copy the logfiles to TXT then import and delete
+
+If Left(sFileExt, 1) = "." Then sFileExt = Mid(sFileExt, 2, Len(sFileExt) - 1)
+
+Dim MyObj As Object, MySource As Object, MyFile As Variant
+    DoCmd.SetWarnings False
+    Set MyObj = CreateObject("Scripting.FileSystemObject")
+    Set MySource = MyObj.GetFolder(sLogPath)
+    For Each MyFile In MySource.Files
+        If Right(MyFile, Len(sFileExt) + 1) = "." & sFileExt Then
+        'kill existing import .txt file
+'On Error Resume Next
+            If Dir(sLogPath & sFileExt & ".txt") <> "" Then Kill sLogPath & sFileExt & ".txt"
+'On Error GoTo 0
+        'rename logfile to import.txt
+        'NOTE: if this step fails the import has failed and .txt file not deleted.  Try re-importing the txt first.
+            Name MyFile As sLogPath & sFileExt & ".txt"
+        'append from import.txt
+            DoCmd.OpenQuery sFileExt & " Q1 Append"
+        'delete import.txt
+            Call fn_Delete_Import_TXT_File(sFileExt)
+        End If
+    Next MyFile
+
+'make daily backup of .accdb BE file
+'Note: Access Denied error here means *_be.accdb is locked, find & close it
+    FileCopy sDBbePath, "\\company.local\BackOffice\P&C\RT\Automation\Logging\TXT\Report Trail_be " & Format(Now, "yyyy-mm-dd") & ".backup"
+'delete old backups >7 days
+    Set MySource = MyObj.GetFolder(sLogPath)
+    For Each MyFile In MySource.Files
+        If Right(MyFile, 7) = ".backup" Then
+            If modFile.mfGetDateModified(MyFile) < Now - 7 Then Kill MyFile
+        End If
+    Next MyFile
+
+End Function
+
+Function fn_Excel_Version(ByVal sExcelVersion As String) As Integer
+'Input:     Microsoft Excel Version: 2013 64-bit
+'Output:    2013
+fn_Excel_Version = Mid(sExcelVersion, 26, 4)
+End Function
+
+Function fn_Excel_Architecture(ByVal sExcelVersion As String) As Integer
+'Input:     Microsoft Excel Version: 2013 64-bit
+'Output:    64
+fn_Excel_Architecture = Mid(sExcelVersion, 31, 2)
+End Function
+
+Function fn_Replace_COps_Inbox_TXT_File(ByVal sInbox As String)
+'backs up and resets the import.txt file once imported to prevent double-import
+'run this from the macro after doing the import query
+Dim sPathFile As String, sPathFileDefault As String
+sPathFile = sLogPath & "COps_Inbox_Log_" & sInbox & ".txt"
+sPathFileDefault = sLogPath & "COps_Inbox_Log - default empty file.txt"
+'1. make a dated backup
+    FileCopy sPathFile, Replace(Replace(sPathFile, ".txt", " " & Format(Now, "yyyy-mm-dd hhnnss") & ".txt"), "TXT\", "TXT\Inbox_Backups\")
+'2. replace the current TXT file with the blank template
+    SetAttr sPathFile, vbNormal
+    FileCopy sPathFileDefault, sPathFile
+End Function
+
+Function fn_Delete_Import_TXT_File(ByVal sFileExt As String)
+'deletes the import.txt file once imported to prevent double-import
+Dim sPathFile As String
+sPathFile = sLogPath & sFileExt & ".txt"
+SetAttr sPathFile, vbNormal
+Kill sPathFile
+End Function
+
+Function fn_LW(ByVal dLogDate As Double) As Boolean
+'reports whether it's in Last Week's data
+Dim dThisMonday As Double, dMondayLW As Double
+dThisMonday = Now - (Weekday(Now, vbMonday) - 2)
+dMondayLW = dThisMonday - 7
+If dLogDate >= dMondayLW And dLogDate < dThisMonday Then fn_LW = True
+End Function
+
+Function fn_L4W(ByVal dLogDate As Double) As Boolean
+'reports whether it's in Last Four Week's data
+Dim dThisMonday As Double, dMondayL4W As Double
+dThisMonday = Now - (Weekday(Now, vbMonday) - 2)
+dMondayL4W = dThisMonday - 28
+If dLogDate >= dMondayL4W And dLogDate < dThisMonday Then fn_L4W = True
+End Function
+
+Function fn_Path_Cleaner(ByVal sReportPath As String) As String
+fn_Path_Cleaner = sReportPath
+On Error GoTo CleanUp
+'replace standard text to correct any mapped drives to network location
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "X:\RT\", sPandCRT)
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "Z:\RT\", sPandCRT)
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "company.com", "company.local")
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "rcfs\P&C", "BackOffice\P&C")
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "\\tjfsmcr\P&C\RT\", sPandCRT)
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "\\mcr-fs-01\P&C\RT\", sPandCRT)
+    fn_Path_Cleaner = Replace(fn_Path_Cleaner, "\\company.local\BackOffice\P&C\RT\", sPandCRT)
+'remove filename from path
+    Dim a As Integer, b As Integer
+    a = InStr(fn_Path_Cleaner, ".xl")
+    If a > 0 Then
+        a = 1
+        a = InStr(a, fn_Path_Cleaner, "\")
+        While a > 0
+            b = a   'b is now the position of the slash
+            a = InStr(a + 1, fn_Path_Cleaner, "\")
+        Wend
+        'b is now the position of the LAST slash
+        fn_Path_Cleaner = Left(fn_Path_Cleaner, b)
+    End If
+CleanUp:
+End Function
+
+Function xlU_Clean_Special(ByVal str As String, Optional ByVal CropLength As Boolean = True _
+    , Optional ByVal OnlyFilename As Boolean _
+    , Optional ByVal OnlyVBObjectName As Boolean) As String
+'v9.00 2013-07-25 19:31
+'removes invalid special characters from path/file/VBObject name string
+' CropLength:=True stops message box warnings and autocrops string to 128 chars
+' OnlyFilename:=True also removes slashes \ /
+' OnlyVBObjectName:=True also removes slashes, spaces, hyphens, commas, periods
+
+'constants (commented if defined below)
+'Const scUS As String = "_"
+Const VBNameLength = 35
+Const SharePointFileNameLength = 128
+'consistency checks are done below for the following constants
+Const uniMin As Byte = 0    'first universally forbidden character, MUST BE ZERO
+Const uniMax As Byte = 13   'last universally forbidden character, number set according to how many forbidden characters
+Const slaFSL As Byte = 14   'first slash, always Fsl, AWAYS uniMax+1
+Const slaBSL As Byte = 15   'last slash, always Bsl, AWAYS slaFSL+1
+Const vboMin As Byte = 16   'first VBA forbidden character, AWAYS slaBSL+1
+Const vboMax As Byte = 22   'last VBA forbidden character, number set according to how many forbidden characters
+
+Dim b As Integer, c As Integer, pp As String
+Const tt As String = "ERROR in xlU_Clean_Special"
+Dim sc(uniMin To vboMax) As String
+sc(uniMin) = "~"     'unimin referenced specifically below
+sc(uniMin + 1) = Chr(34) 'Chr(34) = " (quotemark)
+sc(uniMin + 2) = "#"
+sc(uniMin + 3) = "%"
+sc(uniMin + 4) = "&"
+sc(uniMin + 5) = "*"
+sc(uniMin + 6) = ":"
+sc(uniMin + 7) = "<"
+sc(uniMin + 8) = ">"
+sc(uniMin + 9) = "?"
+sc(uniMin + 10) = "{"
+sc(uniMin + 11) = "|"
+sc(uniMin + 12) = "}"
+If uniMin + 13 <> uniMax Then   'consistency check
+    pp = "uniMin + 13 <> uniMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(uniMax) = ".."
+'slashes for filenames and VB Object names (NOT paths)
+sc(slaFSL) = "/"
+sc(slaBSL) = "\"
+'hyphen & space & comma & period & brackets & apostrophe for VB Object names
+sc(vboMin) = "-"
+sc(vboMin + 1) = " "
+sc(vboMin + 2) = ","
+sc(vboMin + 3) = "."
+sc(vboMin + 4) = "("
+sc(vboMin + 5) = "'"
+If vboMin + 6 <> vboMax Then    'consistency check
+    pp = "vboMin + 6 <> vboMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(vboMax) = ")"
+
+'remove special characters from all
+For b = uniMin To uniMax
+    str = Replace(str, sc(b), vbNullString)
+Next b
+
+'check filename length (length AFTER the LAST slash max 128 chars)
+b = InStr(1, str, sc(slaFSL))  'look for fwd slash
+If b > 0 Then
+    str = Replace(str, sc(slaBSL), sc(slaFSL))  'remove all back slashes
+    Do Until b = 0  'until last slash found
+        c = b       'c is position of last slash
+        b = b + 1                   'next position
+        b = InStr(b, str, sc(slaFSL))   'next position
+    Loop
+Else  'no fwd slashes
+    b = InStr(1, str, sc(slaBSL))  'look for back slash
+    If b > 0 Then
+        str = Replace(str, sc(slaFSL), sc(slaBSL))  'remove all fwd slashes
+        Do Until b = 0  'until last slash found
+            c = b       'c is position of last slash
+            b = b + 1                   'next position
+            b = InStr(b, str, sc(slaBSL))   'next position
+        Loop
+    End If
+End If
+'c is position of last slash, or 0 if no slashes
+If Len(str) - c > SharePointFileNameLength Then
+    If CropLength = True Then
+        str = Left(str, VBNameLength)
+    Else
+        pp = "WARNING: filename > " & SharePointFileNameLength & " chars" & vbLf & vbLf & str
+        MsgBox pp, vbCritical, tt
+        End
+    End If
+End If
+
+If OnlyFilename = True Or OnlyVBObjectName = True Then
+'swap all slashes for spaces - NOT suitable for paths!
+    For b = slaFSL To slaBSL
+        c = InStr(str, sc(b))
+        Do While c > 0
+            str = Left(str, c - 1) & Replace(Right(str, Len(str) - c), sc(b), cSpc)
+            c = InStr(str, sc(b))
+        Loop
+    Next b
+End If
+
+If OnlyVBObjectName = True Then
+'swap hyphens & spaces & periods for underscore in VB object name
+    Const scUS As String = "_"
+    For b = slaFSL To vboMax
+        str = Replace(str, sc(b), scUS)
+    Next b
+'then remove invalid characters from start of string
+    Dim c1 As String
+    c1 = Left(str, 1)
+    Do While c1 = scUS Or c1 = sc(18) Or IsNumeric(c1)
+        str = Right(str, Len(str) - 1)
+        c1 = Left(str, 1)
+    Loop
+'remove double underscore
+    Do While InStr(str, scUS & scUS) > 0
+        str = Replace(str, scUS & scUS, scUS)
+    Loop
+    'check object name length
+    If Len(str) > VBNameLength Then
+        If CropLength = True Then
+            str = Left(str, VBNameLength)
+        Else
+            pp = "WARNING: object name > 35 chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+'remove needless underscores from end of string
+Do While Right(str, 1) = scUS
+    str = Left(str, Len(str) - 1)
+Loop
+
+xlU_Clean_Special = str
+
+End Function
+

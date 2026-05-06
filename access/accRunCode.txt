@@ -1,0 +1,78 @@
+Attribute VB_Name = "accRunCode"
+Option Compare Database
+'requires accUtils v6
+
+Function Truncate_BI01_PandC_Sandpit_COps_Fct_JIRA_Issues_STAGING()
+'truncates the STAGING table for Jira tickets in BI-01 for Company_Supplier_Country
+
+Call ado_ExecStoredProcedure("[PandC_Sandpit].[COps].[TRUNCATE_Fct_JIRA_Issues_STAGING] @YesIReallyMeanIt=1")
+
+End Function
+
+Function Truncate_MySQL_Company_Supplier_Country()
+'truncates the table from MySQL in BI-01 for Company_Supplier_Country
+
+Dim cnn As ADODB.Connection, cmd As ADODB.Command
+ 
+Set cnn = New ADODB.Connection
+'"Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+Set cmd = New ADODB.Command
+ 
+cmd.ActiveConnection = cnn
+cmd.CommandText = "[PandC_Sandpit].[MySQL].[TRUNCATE_titan1_Company_Supplier_Country] @YesIReallyMeanIt=1"
+cmd.CommandType = adCmdStoredProc
+ 
+cmd.Execute
+ 
+Set cmd = Nothing
+Set cnn = Nothing
+
+End Function
+
+Function Truncate_MySQL_titan1_Location_City_Time_Zone_Country()
+'reloads the tables from MySQL into BI-01 for Company_Supplier_Country
+
+Dim cnn As ADODB.Connection, cmd As ADODB.Command, rst As ADODB.Recordset
+Set cnn = New ADODB.Connection
+With cnn
+    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+    .Open
+    If .State = adStateClosed Then
+        MsgBox "Can't open connection.", vbInformation, "Error:"
+    End If
+End With
+Set cmd = New ADODB.Command
+With cmd
+    .ActiveConnection = cnn
+    .CommandType = adCmdStoredProc
+    .CommandText = "[PandC_Sandpit].[MySQL].[titan1_Location_City_Time_Zone_Country_TRUNCATE]"
+    .Execute
+End With
+cnn.Close
+
+End Function
+
+Function Truncate_MySQL_titan1_Company_Supplier_Country()
+'reloads the tables from MySQL into BI-01 for Company_Supplier_Country
+
+Dim cnn As ADODB.Connection, cmd As ADODB.Command, rst As ADODB.Recordset
+Set cnn = New ADODB.Connection
+With cnn
+    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+    .Open
+    If .State = adStateClosed Then
+        MsgBox "Can't open connection.", vbInformation, "Error:"
+    End If
+End With
+Set cmd = New ADODB.Command
+With cmd
+    .ActiveConnection = cnn
+    .CommandType = adCmdStoredProc
+    .CommandText = "[PandC_Sandpit].[MySQL].[TRUNCATE_titan1_Company_Supplier_Country]"
+    .Execute
+End With
+cnn.Close
+
+End Function
+
+

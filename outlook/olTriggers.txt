@@ -1,0 +1,949 @@
+Attribute VB_Name = "olTriggers"
+Option Explicit
+Option Compare Text
+'Private Const sPathYDrive As String = "\\company.local\Group Data\P&C\"
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+'v5.31 2019-10-24 10:58 - Trigger_Reservations: added sLocationDO separately from sLocationPU
+'v5.30 2019-10-22 09:51 - Trigger_Reservations: updated range names in Excel
+'v5.29 2019-07-16 08:35 - passes through submission date to Excel
+'v5.28 2019-06-07 10:01 - minor change to email message to say "refreshed" not "updated"
+'v5.27 2019-01-25 17:15 - minor change to email message Y:\ for M:\P&C\
+'v5.26 2019-01-21 10:31 - switched sPathYDrive for sPathMDrive throughout
+'v5.25 2019-01-21 10:28 - OL_RemoveAllItemsAndFoldersInDeletedItems: added
+'v5.24 2019-01-17 15:27 - updated P&C drive to Group Data
+'v5.23 2019-01-09 12:15 - updated to M drive including sPathMDrive constant
+'v5.22 2018-12-12 14:15 - bugfix: removed DMX P1
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.20 2018-08-22 17:25 - Trigger_Reservations: added OneWayOnly option
+'v5.19 2018-07-04 12:35 - Trigger_OWFs: changed to P&C Tools location and output location set in report
+'v5.18 2018-06-13 12:24 - deletes files older than 30 days from folder
+'v5.17 2018-06-13 12:00 - Trigger_Reservations: deletes files older than 30 days from folder
+'v5.16 2018-06-13 11:54 - Trigger_Reservations: added refs to modFile and modFile_FSO
+'v5.15 2018-03-27 12:22 - added sPathYDrive throughout
+'v5.14 2017-11-14 09:47 - Trigger_Reservations: disabled events in Excel when opening the Reservation Request report, requires modAuto v5.00
+'v5.13 2017-10-10 12:10 - Trigger_Reservations: fixed format in Dur/Age Min/Max filters to "##0" to account for 0
+'v5.12 2017-10-09 10:08 - Trigger_Reservations: added DurMin/Max filters
+'v5.11 2017-09-12 11:38 - Trigger_Reservations: added AgeMin/Max filters, added Sleep 2000 but commented it for now, removed Country absolute failure note, amended failure emails
+'v5.10 2017-08-30 16:40 - Trigger_Reservations: added errorhandler when macros broken in target workbook
+'v5.09 2017-07-12 12:12 - Trigger_Reservations: added bIncludePII
+'v5.08 2017-07-06 16:45 - Trigger_Reservations: bugfix on car intern
+'v5.07 2017-07-04 16:45 - Trigger_Reservations: added car intern
+'v5.06 2017-06-30 13:19 - Trigger_DMX: archives trigger emails with attachments
+'v5.05 2017-06-26 13:14 - Trigger_Reservations: forced date format
+'v5.04 2017-06-23 13:27 - improved validity on latest report file success/failure
+'v5.03 2017-06-23 12:24 - Trigger_Reservations: added Location filter to query
+'v5.02 2017-06-21 16:48 - Trigger_Reservations: bugfix in filenames, the output file is saved with seconds so the exact timestamp doesn't work
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v5.00 2017-06-16 15:43 - added Trigger_Reservations
+'v4.08 2017-05-24 17:32 - Trigger_DMX: errorhandler to help prevent error on opening
+'v4.07 2017-05-02 09:36 - Trigger_TactCalc: added email confirmation & delete email
+'v4.06 2017-03-13 06:44 - Trigger_Season_End_Dates: better error handling, refuses blank country
+'v4.05 2017-03-10 13:55 - Trigger_Season_End_Dates: bugfix for blank supplier
+'v4.04 2017-03-07 09:40 - changed process to save attachment as Excel file then import into Access
+'v4.03 2017-02-24 11:41 - errorhandler for missing master file
+'v4.02 2017-02-10 13:45 - don't use Public XLapp, it doesn't close when done
+'v4.01 2017-02-10 13:28 - added iDaysBack (v1-04)
+'v4.00 2017-02-01 10:49 - added Trigger_TactCalc
+'v3.07 2017-01-24 12:10 - Trigger_DMX: errorhandler for locked master file
+'v3.06 2017-01-23 06:58 - Trigger_DMX: code tidyup
+'v3.05 2017-01-20 07:12 - Trigger_DMX: added errorhandler to fix persistent Excel sessions
+'v3.04 2017-01-17 11:13 - Trigger_DMX: added UNC to email
+'v3.03 2017-01-12 11:13 - Trigger_DMX: separated open & update processes to disable events on open of attachment
+'v3.02 2017-01-11 17:19 - Trigger_DMX: separated submission & update processes, works with P1 auths, updates main report
+'v3.01 2017-01-11 09:42 - Trigger_Season_End_Dates: amendment to rejection email
+'v3.00 2017-01-05 17:27 - added Trigger_DMX
+'v2.00 2017-01-05 13:39 - added Trigger_OWFs
+'v1.02 2017-01-03 17:33 - bugfix in modAppsOffice object usage
+'v1.01 2017-01-03 17:20 - tweaks for response when output fails
+'v1.00 2016-12-23 16:00 - first version
+
+Sub Trigger_Selected_Mail()
+Dim olMail As Outlook.MailItem
+Set olMail = GetCurrentItem()
+'choose trigger below:
+    Trigger_Reservations olMail
+    'Trigger_Season_End_Dates olMail
+    'Trigger_OWFs olMail
+    'Trigger_DMX olMail
+    'Trigger_TactCalc olMail
+End Sub
+
+Function GetCurrentItem() As Object
+    Dim objApp As Outlook.Application
+            
+    Set objApp = Application
+    On Error Resume Next
+    Select Case TypeName(objApp.ActiveWindow)
+        Case "Explorer"
+            Set GetCurrentItem = objApp.ActiveExplorer.Selection.Item(1)
+        Case "Inspector"
+            Set GetCurrentItem = objApp.ActiveInspector.CurrentItem
+    End Select
+        
+    Set objApp = Nothing
+End Function
+
+Sub Trigger_Season_End_Dates(ByRef olItem As MailItem)
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.04 2017-06-23 13:27 - improved validity on latest report file success/failure
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v4.06 2017-03-13 06:44 - better error handling, refuses blank country
+'v4.05 2017-03-10 13:55 - bugfix for blank supplier
+'v4.02 2017-02-10 13:45 - don't use Public XLapp, it doesn't close when done
+'v4.01 2017-02-10 13:28 - added iDaysBack (v1-04)
+'v3.06 2017-01-23 06:58 - code tidyup
+'v3.01 2017-01-11 09:42 - amendment to rejection email
+'v1.02 2017-01-03 17:33 - bugfix in modAppsOffice object usage
+'v1.01 2017-01-03 17:20 - tweaks for response when output fails
+'v1.00 2016-12-23 16:00 - first version
+
+Dim rptpth As String
+rptpth = sPathMDrive & "P&C\RT\PC Insight Reports\Exception Reports\All Seasons.xlsb"
+
+Dim XLapp As Excel.Application, wb As Excel.Workbook
+
+Dim sBody As String, sCountry As String, sSupplier As String, sSender As String, iDaysBack As Integer
+sSender = modEmail.Email_Sender_Address(olItem)
+If InStr(sSender, "@company") = 0 Then GoTo UnauthorisedSender
+
+
+sBody = olItem.Body
+Dim a As Integer, b As Integer
+On Error Resume Next
+a = InStr(sBody, "Country: ") + Len("Country: ")
+b = InStr(a, sBody, vbLf)
+sCountry = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "Supplier: ") + Len("Supplier: ")
+b = InStr(a, sBody, vbLf)
+sSupplier = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "Days Back: ") + Len("Days Back: ")
+b = InStr(a, sBody, vbLf)
+iDaysBack = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+On Error GoTo 0
+If sCountry = "" Then
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Season End Dates", "<p>Season End Dates report failed to update.  Country may not be left blank.  Feel free to try again.  Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+    Exit Sub
+End If
+
+Dim d0 As Double, d1 As Double
+Set XLapp = modAppsOffice.run_Excel("", rptpth, "", , True, True, True)
+With XLapp
+    .Sheets("settings").Range("admin_Country") = sCountry
+    .Sheets("settings").Range("admin_Supplier") = sSupplier
+    .Sheets("settings").Range("admin_DaysBack") = iDaysBack
+    d0 = Now
+    .Run "Produce_Report", "", "", iDaysBack
+    For Each wb In .Workbooks
+        wb.Saved = True
+        wb.Close False
+    Next wb
+End With
+XLapp.Quit
+Set XLapp = Nothing
+
+Dim sOutputPath As String
+sOutputPath = sPathMDrive & "P&C\RT\PC Insight Reports\Exception Reports\All Seasons Outputs\"
+Dim sOutputFile As String
+sOutputFile = Find_Newest_Filename(sOutputPath)
+d1 = mfGetDateModified(sOutputPath & sOutputFile)
+If d1 < d0 Then 'latest file is earlier than start of process
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Season End Dates", "<p>Season End Dates report failed to update.  Country and Supplier (" & sCountry & " and " & sSupplier & ") may not be a valid combination.  Feel free to try again.  Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+Else
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Updated: Season End Dates", "<p>Season End Dates report updated" & vbLf & vbLf & "<p><a href=""" & sOutputPath & """>" & sOutputPath & "</a>", False, sOutputPath, , , , True, , , True
+End If
+OL_Simple_Archive olItem, True
+
+ErrorHandler:
+If Not XLapp Is Nothing Then
+On Error Resume Next
+    XLapp.Quit
+    Set XLapp = Nothing
+End If
+Exit Sub
+UnauthorisedSender:
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Season End Dates", "<p>Season End Dates report failed to update.  You are not an authorised user.  Please contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+End Sub
+
+Sub Trigger_OWFs(ByRef olItem As MailItem)
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.19 2018-07-04 12:35 - changed to P&C Tools location and output location set in report
+'v5.18 2018-06-13 12:24 - deletes files older than 30 days from folder
+'v5.04 2017-06-23 13:27 - improved validity on latest report file success/failure
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v4.02 2017-02-10 13:45 - don't use Public XLapp, it doesn't close when done
+'v3.06 2017-01-23 06:58 - code tidyup
+'v2.00 2017-01-05 13:39 - first version
+
+Dim rptpth As String
+rptpth = sPathMDrive & "P&C\RT\PC Insight Reports\Tools\One Way Fees self-serve.xlsb"
+
+Dim XLapp As Excel.Application, wb As Excel.Workbook
+
+Dim sBody As String, sCountry As String, sSupplier As String, sSender As String
+If olItem.SenderEmailType = "EX" Then
+    sSender = olItem.Sender.GetExchangeUser().PrimarySmtpAddress
+Else
+    sSender = olItem.SenderEmailAddress
+End If
+If InStr(sSender, "@company") = 0 Then GoTo UnauthorisedSender
+
+
+Dim d0 As Double, d1 As Double, sOutputPath As String
+d1 = 1
+GoTo ErrorTemporary 'this needs fixing
+
+
+
+sBody = olItem.Body
+Dim a As Integer, b As Integer
+a = InStr(sBody, "Country: ") + Len("Country: ")
+b = InStr(a, sBody, vbLf)
+sCountry = Mid(sBody, a, b - a - 2)
+a = InStr(sBody, "Supplier: ") + Len("Supplier: ")
+b = InStr(a, sBody, vbLf)
+sSupplier = Mid(sBody, a, b - a - 2)
+
+'Dim d0 As Double, d1 As Double, sOutputPath As String
+Set XLapp = modAppsOffice.run_Excel("", rptpth, "", , True, True, True)
+With XLapp
+    .Sheets("settings").Range("admin_Country") = sCountry
+    .Sheets("settings").Range("admin_Supplier") = sSupplier
+    sOutputPath = .Sheets("settings").Range("admin_OutputPath")
+    d0 = Now
+    .Run "Produce_Report", "", ""
+    For Each wb In .Workbooks
+        wb.Saved = True
+        wb.Close False
+    Next wb
+End With
+XLapp.Quit
+Set XLapp = Nothing
+
+Dim sOutputFile As String
+Call modFile_FSO.Delete_Files_Older_Than_DateTime(sOutputPath, Now - 30)
+sOutputFile = Find_Newest_Filename(sOutputPath)
+d1 = mfGetDateModified(sOutputPath & sOutputFile)
+ErrorTemporary:
+If d1 < d0 Then 'latest file is earlier than start of process
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: OWFs", "<p>OWFs report failed to be created.  Country & Supplier may not be a valid combination.  Feel free to try again.  Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+Else
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Updated: OWFs", "<p>OWFs report updated" & vbLf & vbLf & "<p><a href=""" & sOutputPath & """>" & sOutputPath & "</a>", False, sOutputPath, , , , True, , , True
+End If
+OL_Simple_Archive olItem, True
+
+ErrorHandler:
+If Not XLapp Is Nothing Then
+On Error Resume Next
+    XLapp.Quit
+    Set XLapp = Nothing
+End If
+Exit Sub
+UnauthorisedSender:
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: OWFs", "<p>OWFs report failed to be created.  You are not an authorised user.  Please contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+End Sub
+
+Sub Trigger_DMX(ByRef olItem As MailItem)
+'v5.29 2019-07-16 08:35 - passes through submission date to Excel
+'v5.28 2019-06-07 10:01 - minor change to email message to say "refreshed" not "updated"
+'v5.27 2019-01-25 17:15 - minor change to email message Y:\ for M:\P&C\
+'v5.23 2019-01-09 12:15 - updated to M drive including sPathMDrive constant
+'v5.22 2018-12-12 14:15 - bugfix: removed DMX P1
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.06 2017-06-30 13:19 - archives trigger emails with attachments
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v4.08 2017-05-24 17:32 - errorhandler to help prevent error on opening
+'v4.03 2017-02-24 11:41 - errorhandler for missing master file
+'v4.02 2017-02-10 13:45 - don't use Public XLapp, it doesn't close when done
+'v3.07 2017-01-24 12:10 - errorhandler for locked master file
+'v3.06 2017-01-23 06:58 - code tidyup
+'v3.04 2017-01-17 11:13 - added UNC to email
+'v3.03 2017-01-12 11:13 - separated open & update processes to disable events on open of attachment
+'v3.02 2017-01-11 17:19 - separated submission & update processes, works with P1 auths, updates main report
+'v3.00 2017-01-05 17:27 - first version
+'simply saves the attachment to temp, opens it in Excel,
+'then runs the relevant macro, and updates relevant bookings in audit log FOR THIS USER ONLY
+
+'save the attachment to temp
+Dim rptpth As String
+rptpth = OL_SaveAttachment(olItem, Environ("temp") & "\", , True, False)
+
+Dim XLapp As Excel.Application, wb As Excel.Workbook
+
+Dim sBody As String, sCountry As String, sSupplier As String, sSender As String, sUser As String
+Dim sDMXupdated As String, sCopyTo As String
+
+If olItem.SenderEmailType = "EX" Then
+    sSender = olItem.Sender.GetExchangeUser().PrimarySmtpAddress
+Else
+    sSender = olItem.SenderEmailAddress
+End If
+If InStr(sSender, "@company") = 0 Then GoTo UnauthorisedSender
+
+
+Dim a As Byte, b As Byte
+sUser = olItem.Body
+a = InStr(sUser, "|")
+b = InStr(a + 1, sUser, "|")
+sUser = Mid(sUser, a + 1, b - a - 1)
+Debug.Print Now & "  Logging DMX updates submitted by " & sUser
+
+Dim dSubmitted As Double
+dSubmitted = olItem.SentOn
+'open attachment in Excel READ ONLY and process the update WITHOUT SAVING
+Set XLapp = modAppsOffice.run_Excel("", "", "", , True, True, True)
+With XLapp
+    .EnableEvents = False
+    On Error GoTo ErrorHandler
+    .Workbooks.Open rptpth, , True
+    On Error GoTo 0
+    .Run "xlAuditLogger.Update_Audit_Table", sUser ', dSubmitted
+    '.Run "xlAuditLogger.Update_Audit_Table_P1_Auth", sUser
+    For Each wb In .Workbooks
+        wb.Saved = True
+        wb.Close False
+    Next wb
+End With
+XLapp.Quit
+sDMXupdated = "<p>DMX Report submissions updated successfully"
+Set XLapp = Nothing
+If Dir(rptpth) <> "" Then Kill rptpth
+
+'now refresh the main report (it's very quick)
+On Error Resume Next
+rptpth = sPathMDrive & "Automation\Masters\Daily Margin Exceptions Report (master).xlsb"
+If Dir(rptpth) = "" Then
+    modEmail.SendEmail modEmail.cAdminEmailTo, , , "UPDATE FAILED: DMX Report Missing", "Submission from " & sUser & " logged OK, but report not refreshed"
+    GoTo ErrorHandler
+End If
+Set XLapp = modAppsOffice.run_Excel("", "", "", , True, False, True)
+With XLapp
+    .EnableEvents = False
+    .Workbooks.Open rptpth
+    If InStr(.Caption, "read-only") > 0 Then
+        sDMXupdated = "<p>NB: your comments were logged, but DMX Report was not refreshed.  Please contact P&C Insight for further advice."
+        sCopyTo = "pcinsight@company.com"
+    Else
+        sDMXupdated = "<p>DMX Report updated:<p><a href=" & Chr(34) & sPathMDrive & "P&C\RT\PC Insight Reports\Exception Reports\Daily Margin Exceptions Report.xlsb" & Chr(34) & ">M:\P&C\RT\PC Insight Reports\Exception Reports\Daily Margin Exceptions Report.xlsb</a>"
+        .EnableEvents = True
+        .Workbooks.Open rptpth  'reopen it to process changes automatically, could change to run TW_Open but it seems to cause errors?
+    End If
+End With
+XLapp.Quit
+Set XLapp = Nothing
+On Error GoTo 0
+
+modEmail.SendEmail sSender, sCopyTo, , "DMX Submission Updated", sDMXupdated, False, , , , , True, , , True
+OL_Simple_Archive olItem, False
+
+ErrorHandler:
+If Not XLapp Is Nothing Then
+On Error Resume Next
+    XLapp.Quit
+    Set XLapp = Nothing
+End If
+Exit Sub
+UnauthorisedSender:
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: DMX Submission", "<p>DMX submission failed to be logged.  You are not an authorised user.  Please contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+End Sub
+
+Sub Trigger_TactCalc(ByRef olItem As MailItem)
+'v5.23 2019-01-09 12:15 - updated to M drive including sPathMDrive constant
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v4.07 2017-05-02 09:36 - added email confirmation & delete email
+'v4.04 2017-03-07 09:40 - changed process to save attachment as Excel file then import into Access
+'v4.02 2017-02-10 13:45 - don't use Public XLapp, it doesn't close when done
+'v4.00 2017-02-01 10:49 - added Trigger_TactCalc
+'simply saves the attachment to temp, opens it in Excel,
+'then runs the relevant macro, and updates relevant table in Access
+
+Dim sBody As String, sCountry As String, sSupplier As String, sSender As String, sUser As String
+Dim sDMXupdated As String, sCopyTo As String
+
+If olItem.SenderEmailType = "EX" Then
+    sSender = olItem.Sender.GetExchangeUser().PrimarySmtpAddress
+Else
+    sSender = olItem.SenderEmailAddress
+End If
+If InStr(sSender, "@company") = 0 Then GoTo UnauthorisedSender
+
+
+'save the attachment to temp
+Dim rptpth As String
+rptpth = OL_SaveAttachment(olItem, sPathMDrive & "Automation\Access\Excel Linked Tables\", "tracker.xlsb", False, False)
+
+Call modAppsOffice.run_Access(sPathMDrive & "Automation\Access\", "TacticalCalc_tracker.accdb", "import")
+
+On Error Resume Next
+'If Dir(rptpth) <> "" Then Kill rptpth
+On Error GoTo 0
+
+modEmail.SendEmail sSender, sCopyTo, , "Tactical Calculator Submission Received", , False, , , , , True, , , True
+OL_Simple_Archive olItem, True
+
+Exit Sub
+UnauthorisedSender:
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Tactical Calculator Submission", "<p>Tactical Calculator submission failed to be logged.  You are not an authorised user.  Please contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+End Sub
+
+Sub Trigger_Reservations(ByRef olItem As MailItem)
+'v5.31 2019-10-24 10:58 - added sLocationDO separately from sLocationPU
+'v5.30 2019-10-22 11:57 - updated range names in Excel
+'v5.21 2018-08-24 13:45 - added Unauthorised User dropouts, resolves email address from SMTP header
+'v5.20 2018-08-22 17:25 - Trigger_Reservations: added OneWayOnly option
+'v5.17 2018-06-13 12:00 - deletes files older than 30 days from folder
+'v5.16 2018-06-13 11:54 - added refs to modFile and modFile_FSO
+'v5.14 2017-11-14 09:47 - disabled events in Excel when opening the Reservation Request report, requires modAuto v5.00
+'v5.13 2017-10-10 12:10 - fixed format in Dur/Age Min/Max filters to "##0" to account for 0
+'v5.12 2017-10-09 10:08 - added DurMin/Max filters
+'v5.11 2017-09-12 11:38 - added AgeMin/Max filters, added Sleep 2000 but commented it for now, removed Country absolute failure note, amended failure emails
+'v5.10 2017-08-30 16:40 - added errorhandler when macros broken in target workbook
+'v5.09 2017-07-12 12:12 - added bIncludePII
+'v5.08 2017-07-06 16:45 - bugfix on car intern
+'v5.07 2017-07-04 16:45 - added car intern
+'v5.05 2017-06-26 13:14 - forced date format
+'v5.04 2017-06-23 13:27 - improved validity on latest report file success/failure
+'v5.03 2017-06-23 12:24 - added Location filter to query
+'v5.02 2017-06-21 16:48 - bugfix in filenames, the output file is saved with seconds so the exact timestamp doesn't work
+'v5.01 2017-06-16 16:15 - now archives trigger emails
+'v5.00 2017-06-16 15:43 - added Trigger_Reservations
+
+Dim rptpth As String
+rptpth = sPathMDrive & "P&C\RT\PC Insight Reports\Exception Reports\Reservation Request.xlsb"
+
+Dim XLapp As Excel.Application, wb As Excel.Workbook
+
+Dim sBody As String, sDestination As String _
+    , sLocationPU As String, sLocationDO As String _
+    , sSupplier As String, sProduct As String, sCarIntern As String _
+    , sBDateFirst As String, sBDateLast As String _
+    , sPUDateFirst As String, sPUDateLast As String _
+    , sAgeMin As String, sAgeMax As String _
+    , sDurMin As String, sDurMax As String _
+    , sSender As String, bIncludePII As Boolean _
+    , bOneWayOnly As Boolean
+If olItem.SenderEmailType = "EX" Then
+    sSender = olItem.Sender.GetExchangeUser().PrimarySmtpAddress
+Else
+    sSender = olItem.SenderEmailAddress
+End If
+If InStr(sSender, "@company") = 0 Then GoTo UnauthorisedSender
+
+
+sBody = olItem.Body
+Dim a As Integer, b As Integer
+On Error Resume Next
+a = InStr(sBody, "Destination: ") + Len("Destination: ")
+b = InStr(a, sBody, vbLf)
+sDestination = Mid(sBody, a, b - a - 2)
+'sDestination = fn_GetReport_AnyPrefix("Country", olItem.Body)
+'MsgBox sDestination
+'Exit Sub
+a = 0
+b = 0
+a = InStr(sBody, "Supplier: ") + Len("Supplier: ")
+b = InStr(a, sBody, vbLf)
+sSupplier = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "Product: ") + Len("Product: ")
+b = InStr(a, sBody, vbLf)
+sProduct = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "LocationPU: ") + Len("LocationPU: ")
+b = InStr(a, sBody, vbLf)
+sLocationPU = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "LocationDO: ") + Len("LocationDO: ")
+b = InStr(a, sBody, vbLf)
+sLocationDO = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "CarIntern: ") + Len("CarIntern: ")
+b = InStr(a, sBody, vbLf)
+sCarIntern = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "BDateFirst: ") + Len("BDateFirst: ")
+b = InStr(a, sBody, vbLf)
+sBDateFirst = Format(Mid(sBody, a, b - a - 2), "yyyy-mm-dd")
+a = 0
+b = 0
+a = InStr(sBody, "BDateLast: ") + Len("BDateLast: ")
+b = InStr(a, sBody, vbLf)
+sBDateLast = Format(Mid(sBody, a, b - a - 2), "yyyy-mm-dd")
+a = 0
+b = 0
+a = InStr(sBody, "PUDateFirst: ") + Len("PUDateFirst: ")
+b = InStr(a, sBody, vbLf)
+sPUDateFirst = Format(Mid(sBody, a, b - a - 2), "yyyy-mm-dd")
+a = 0
+b = 0
+a = InStr(sBody, "PUDateLast: ") + Len("PUDateLast: ")
+b = InStr(a, sBody, vbLf)
+sPUDateLast = Format(Mid(sBody, a, b - a - 2), "yyyy-mm-dd")
+a = 0
+b = 0
+a = InStr(sBody, "AgeMin: ") + Len("AgeMin: ")
+b = InStr(a, sBody, vbLf)
+sAgeMin = Format(Mid(sBody, a, b - a - 2), "##0")
+a = 0
+b = 0
+a = InStr(sBody, "AgeMax: ") + Len("AgeMax: ")
+b = InStr(a, sBody, vbLf)
+sAgeMax = Format(Mid(sBody, a, b - a - 2), "##0")
+a = 0
+b = 0
+a = InStr(sBody, "DurMin: ") + Len("DurMin: ")
+b = InStr(a, sBody, vbLf)
+sDurMin = Format(Mid(sBody, a, b - a - 2), "##0")
+a = 0
+b = 0
+a = InStr(sBody, "DurMax: ") + Len("DurMax: ")
+b = InStr(a, sBody, vbLf)
+sDurMax = Format(Mid(sBody, a, b - a - 2), "##0")
+a = 0
+b = 0
+a = InStr(sBody, "IncludePII: ") + Len("IncludePII: ")
+b = InStr(a, sBody, vbLf)
+bIncludePII = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+a = InStr(sBody, "OneWayOnly: ") + Len("OneWayOnly: ")
+b = InStr(a, sBody, vbLf)
+bOneWayOnly = Mid(sBody, a, b - a - 2)
+a = 0
+b = 0
+On Error GoTo 0
+'If sDestination = "" Then
+'    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Reservation Request", "<p>Reservation Request report failed to create an output.  Feel free to try again with different criteria.  Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.<p>" & sBody, False, , , , , True, , , True
+'    Exit Sub
+'End If
+
+Dim d0 As Double, d1 As Double
+Set XLapp = modAppsOffice.run_Excel("", rptpth, "", , True, True, True, False)  'disables events to prevent it auto-updating and closing
+With XLapp
+On Error Resume Next
+    .Sheets("settings").Range("admin_Destination") = sDestination
+    .Sheets("settings").Range("admin_Supplier") = sSupplier
+    .Sheets("settings").Range("admin_Product") = sProduct
+    .Sheets("settings").Range("admin_Location_PU") = sLocationPU
+    .Sheets("settings").Range("admin_Location_DO") = sLocationDO
+    .Sheets("settings").Range("admin_car_intern") = sCarIntern
+    .Sheets("settings").Range("admin_BDateFirst") = sBDateFirst
+    .Sheets("settings").Range("admin_BDateLast") = sBDateLast
+    .Sheets("settings").Range("admin_PUDateFirst") = sPUDateFirst
+    .Sheets("settings").Range("admin_PUDateLast") = sPUDateLast
+    .Sheets("settings").Range("admin_AgeMin") = sAgeMin
+    .Sheets("settings").Range("admin_AgeMax") = sAgeMax
+    .Sheets("settings").Range("admin_DurMin") = sDurMin
+    .Sheets("settings").Range("admin_DurMax") = sDurMax
+    .Sheets("settings").Range("admin_Include_PII").Value = bIncludePII
+    .Sheets("settings").Range("admin_Only_OneWay").Value = bOneWayOnly
+On Error GoTo 0
+    d0 = Now
+On Error GoTo MacrosDisabled
+    .Run "Produce_Report"
+On Error GoTo 0
+    For Each wb In .Workbooks
+        wb.Saved = True
+        wb.Close False
+    Next wb
+End With
+XLapp.Quit
+Set XLapp = Nothing
+
+Dim sOutputPath As String
+sOutputPath = sPathMDrive & "P&C\RT\PC Insight Reports\Exception Reports\Reservation Request Outputs\"
+
+Dim sOutputFile As String
+Call modFile_FSO.Delete_Files_Older_Than_DateTime(sOutputPath, Now - 30)
+sOutputFile = modFile_FSO.Find_Newest_Filename(sOutputPath)
+'Sleep 2000
+d1 = modFile.mfGetDateModified(sOutputPath & sOutputFile)
+If d1 < d0 Then 'latest file is earlier than start of process
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Reservation Request", "<p>Reservation Request report failed to create an output.  Filters may not be a valid combination.  Feel free to try again with different criteria.<p>Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.<p>" & sBody, False, , , , , True, , , True
+Else
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Updated: Reservation Request", "<p>Reservation Request report updated:<p>" & sOutputFile & "<p><a href=""" & sOutputPath & """>" & sOutputPath & "</a><p>Contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance if your report has >1000 bookings.<p>" & sBody, False, sOutputPath, , , , True, , , True
+End If
+OL_Simple_Archive olItem, True
+
+MacrosDisabled:
+ErrorHandler:
+    If Not XLapp Is Nothing Then
+    On Error Resume Next
+        XLapp.Quit
+        Set XLapp = Nothing
+    End If
+    Exit Sub
+
+UnauthorisedSender:
+    modEmail.SendEmail sSender, , "pcinsightvm@company.com", "Report Failed: Reservation Request", "<p>Reservation Request failed to be created.  You are not an authorised user.  Please contact <a href=""mailto:P&CInsight@company.com""><b>P&C Insight</b></a> for assistance.", False, , , , , True, , , True
+    Exit Sub
+
+End Sub
+
+Private Function OL_SaveAttachment(Item As Outlook.MailItem _
+    , pth As String, Optional ofn As String _
+    , Optional bDeleteAttachment As Boolean = True _
+    , Optional bAlsoArchive As Boolean = True) As String
+'v13.03 2014-10-15 15:14 - bugfix for GIF attachments from DHLI (only affects log?)
+'v6.27 2013-12-10 09:41 - added bAlsoArchive option, fixes bug with OL_DATABASE
+'v6.24 2013-12-06 18:54
+'saves attachment(s) (requires pth to be set in parent macro)
+'if AttCount > 1, renames if ofn specified (doesn't work for ZIP attachments)
+'deletes attachment(s) from email ONLY if successful
+'ZIP attachments MUST be named "Original Filename.csv.zip" and only contain that one file
+
+Dim OLapp As Outlook.Application
+'Set OLapp = CreateObject("Outlook.Application")
+Set OLapp = Application
+
+Dim myAttachments As Outlook.Attachments, AttName As String, AttCount As Byte, Att As Byte
+Dim objItem As Outlook.MailItem
+
+Dim logDateTime As String, logPathFile As String, logResult As String
+logResult = False
+
+Const zext As String = ".zip"
+Const gext As String = ".gif"
+
+With Item
+'flag red, cleared later when completed
+'NB: different code for Outlook 2007+
+If Val(Application.Version) < 12 Then
+'2003 and before
+    .FlagStatus = olFlagMarked
+    .FlagIcon = olRedFlagIcon
+    .Save
+Else
+'2007 and later
+    .FlagStatus = olFlagMarked
+    .FlagIcon = olRedFlagIcon
+    .Save
+End If
+End With
+
+Set myAttachments = Item.Attachments
+AttCount = myAttachments.Count
+If AttCount = 0 Then GoTo ResultFalseNoAttachment
+On Error GoTo ResultFalseNoAttachment
+For Att = 1 To AttCount
+    With myAttachments.Item(Att)
+        On Error GoTo 0
+        logDateTime = CStr(Now())
+        
+'save attachment as ZIP then unzip and process contents
+        If Right(.DisplayName, 4) = zext Then
+        
+        'attachment name is "Trimmed Text - Report Name.csv.zip"
+            logPathFile = pth & .DisplayName
+    'On Error Resume Next
+            If Dir(logPathFile) <> "" Then Kill logPathFile  'deletes old temporary zip file if still there
+    'On Error GoTo 0
+    On Error GoTo ResultFalseZipFail
+            .SaveAsFile logPathFile
+        'saved file is "Trimmed Text - Report Name.ext.zip"
+        'extract original file from temporary ZIP
+            Zip7Sub pth, logPathFile, False   '=0 is success
+    On Error GoTo 0
+            Kill logPathFile  'deletes temporary ZIP, no longer required
+        'extracted file is now "Report Name.ext" so change logPathFile
+            logPathFile = pth & Replace(logPathFile, ".zip", "")
+        'logPathFile is now "Report Name.ext"
+        'rename logPathFile if ofn specified
+        'rename logPathFile if ofn specified
+            If ofn <> "" Then
+    On Error Resume Next  'only usually fails if file doesn't exist
+                Kill pth & ofn
+    On Error GoTo 0
+    On Error GoTo ResultFalseRenameFail
+                Name logPathFile As pth & ofn
+    On Error GoTo 0
+                OL_SaveAttachment = pth & ofn
+            Else
+                OL_SaveAttachment = logPathFile
+            End If
+        
+        
+'ignore attachments of specific types
+        ElseIf Right(.DisplayName, 4) = gext Then  '.GIF
+
+
+'save attachment as original file (not zipped)
+        Else
+            
+        'attachment name is "Trimmed Text - Report Name.ext"
+    On Error GoTo ResultFalseSaveFail
+            logPathFile = pth & OL_fn_trim(.DisplayName)
+            .SaveAsFile logPathFile
+        'rename logPathFile if ofn specified
+            If ofn <> "" And pth & ofn <> logPathFile Then  'v4.02 was deleting if ofn same filename
+            'can only do this for one file
+                If AttCount > 1 Then GoTo ResultFalseMultipleAttachmentsRenameFail
+    On Error Resume Next
+                Kill pth & ofn
+    On Error GoTo 0
+    On Error GoTo ResultFalseRenameFail
+                Name logPathFile As pth & ofn
+    On Error GoTo 0
+                OL_SaveAttachment = pth & ofn
+            Else
+                OL_SaveAttachment = logPathFile
+            End If
+        'saved file is "Report Name.csv"
+    On Error GoTo 0
+        
+        End If
+    
+    'completed with no errors
+        logResult = "Success"
+    End With  'Attachment
+Next Att
+
+'only gets this far if no errors (including writing to log)
+With Item
+'remove flag and save
+    .FlagStatus = False
+    .FlagIcon = False
+    .ReminderSet = False
+    .UnRead = False
+    .Save  'is this required? probably not - saves during move step
+'remove attachment and move to relevant folder
+    If bAlsoArchive Then OL_Simple_Archive Item, bDeleteAttachment  'v6.27 'v6.24
+End With
+
+GoTo ResultSubmit
+
+ResultFalseNoAttachment:
+logResult = "Failure: report not attached to email"
+GoTo ResultSubmit
+
+ResultFalseZipFail:
+logResult = "Failure: ZIP attachment " & Att & " could not be saved/unzipped"
+GoTo ResultSubmit
+
+ResultFalseMultipleAttachmentsRenameFail:
+logResult = "Failure: multiple (" & AttCount & ") attachments, cannot be renamed to " & ofn
+GoTo ResultSubmit
+
+ResultFalseRenameFail:
+logResult = "Failure: saved attachment " & Att & " could not be renamed to " & ofn
+GoTo ResultSubmit
+
+ResultFalseSaveFail:
+logResult = "Failure: CSV attachment " & Att & " could not be saved"
+GoTo ResultSubmit
+
+ResultFalseAttDelFail:
+logResult = "Failure: attachment " & Att & " could not be removed"
+GoTo ResultSubmit
+
+
+ResultSubmit:
+On Error GoTo 0
+'report success/failure to log file
+'olV_SubmitLog logDateTime, logPathFile, logResult
+
+
+'myOlApp.Quit
+'Set myOlApp = Nothing
+
+End Function
+
+Private Function OL_fn_trim(ByVal DisplayName As String) As String
+'v2.04 2012-11-08 09:19
+'removes any of specified strings from attachment filename
+'(could use Replace function instead)
+
+'specify TOTAL strings to remove
+Const smax As Byte = 2
+Dim sr(1 To smax) As String, s As Byte, is_pos As Byte, sr_len As Byte
+'specify each string to remove
+sr(1) = "Lookups - "
+sr(2) = " en"
+
+OL_fn_trim = DisplayName
+For s = 1 To smax
+    sr_len = Len(sr(s))
+    is_pos = InStr(OL_fn_trim, sr(s))
+    If is_pos = 0 Then
+    'sr(s) not found in OL_fn_trim
+        Exit For
+    Else
+    'remove sr(s) from OL_fn_trim
+        OL_fn_trim = Left(OL_fn_trim, is_pos - 1) & Mid(OL_fn_trim, is_pos + sr_len, Len(OL_fn_trim))
+    End If
+Next s
+
+End Function
+
+Function OL_Simple_Archive(Item As Outlook.MailItem, Optional bDeleteAttachment As Boolean = False) As Boolean
+'v13.04 2014-11-21 15:04 - error handler for item 'deleted'
+'v13.01 2014-10-01 16:26 - bugfix for blank subj (puts in last ALLCAPS folder)
+'v12.00 2014-09-05 11:43 - OL_MYmbx amended to fit with modEmail.cDefaultEmail
+'v6.28 2013-12-10 17:41 - bugfix for NOCAPSFOLDERNAMES in subject (puts in BPMAUTORUN DATABASE folder)
+'v6.25 2013-12-06 19:01 - converted to function
+'v6.24 2013-12-06 18:56 - added bDeleteAttachment
+'puts email in folder according to email subject, [deletes attachment(s),] marks read & flags complete
+'NB: Outlook rule should be set to prevent email replies on this subject from being processed this way
+
+Dim OLapp As Outlook.Application
+'Set OlApp = CreateObject("Outlook.Application")
+Set OLapp = Application
+
+Dim objNS As Outlook.NameSpace, objFolder As Outlook.MAPIFolder, ParentFolder As Outlook.MAPIFolder
+Set objNS = OLapp.GetNamespace("MAPI")
+Set objFolder = objNS.Folders(modEmail.cDefaultEmail).Folders("Inbox")
+
+Dim blnFolderCreated As Boolean
+
+'identify subfolder from CAPITALISED SUBJECT PREFIX
+'e.g. "BPMAUTORUN ANYREPORT FORWIN MAPPING Free Text" goes in BPMAUTORUN > ANYREPORT > FORWIN > MAPPING > Free Text
+Dim subj As String, s As Integer, olFolderName As String, CapturePrefix As String
+
+Dim oMail As Outlook.MailItem
+On Error GoTo SkipArchive
+Set oMail = Application.Session.GetItemFromID(Item.EntryID)
+On Error GoTo 0
+'subj = SP_fn_val(oMail.Subject, "")  'v6.10 fixes issue with slash etc. in folder name
+subj = oMail.Subject
+If UCase(Left(subj, 3)) = "RE:" Or UCase(Left(subj, 3)) = "FW:" Then Exit Function
+
+'capture "Report: " (generic scheduled reports)
+    CapturePrefix = "Report: "
+    If InStr(subj, CapturePrefix) Then
+    'create/use FOLDERNAME
+        olFolderName = "REPORTS"
+        Set ParentFolder = objFolder
+        blnFolderCreated = OL_Create_objFolder(olFolderName, ParentFolder)
+        If blnFolderCreated = True Then Set ParentFolder = Nothing
+        Set objFolder = ParentFolder.Folders(olFolderName)
+        subj = Mid(subj, Len(CapturePrefix) + 1, Len(subj))
+    End If
+
+s = InStr(subj, " ")
+Do While s > 0
+    s = InStr(subj, " ")  'v6.09 bugfix for 1-word subfolders e.g. "ANYREPORT FORWIN TSP Routing"
+    If s = 0 Then s = Len(subj) + 1
+    olFolderName = Left(subj, s - 1)
+    If olFolderName <> "" And OL_UpperCase(olFolderName) Then
+    'create/use FOLDERNAME
+        Set ParentFolder = objFolder
+        blnFolderCreated = OL_Create_objFolder(olFolderName, ParentFolder)
+        If blnFolderCreated = True Then Set ParentFolder = Nothing
+        Set objFolder = objFolder.Folders(olFolderName)
+        If olFolderName = "DATABASE" Then Exit Do  'v6.10 bugfix for v6.09 doing DATABASE triggers
+        subj = Mid(subj, s + 1, Len(subj))
+    Else
+    'finished extracting CAPSFOLDERNAMES, use remaining free text as destination folder
+        olFolderName = subj
+        Set ParentFolder = objFolder
+        If ParentFolder = "Inbox" Then
+        'v6.28 bugfix for NOCAPSFOLDERNAMES
+            Set objFolder = objFolder.Folders("BPMAUTORUN").Folders("DATABASE")
+        Else
+            blnFolderCreated = OL_Create_objFolder(olFolderName, ParentFolder)
+            If blnFolderCreated = True Then Set ParentFolder = Nothing
+            If olFolderName <> "" Then Set objFolder = objFolder.Folders(olFolderName)
+        End If
+        s = 0
+    End If
+Loop
+
+Set oMail = Nothing
+
+'delete any attachments from mail (saves on mailbox storage)
+If bDeleteAttachment Then  'v6.24
+    Dim AttCount As Byte, Att As Byte
+    On Error Resume Next
+    If Item.Attachments.Count > 0 Then
+        For Att = 1 To Item.Attachments.Count
+            Item.Attachments.Item(Att).Delete
+        Next Att
+    End If
+    On Error GoTo 0
+End If
+
+'mark unread, flag complete, move to specified subfolder
+With Item
+On Error Resume Next
+    .UnRead = False
+    .FlagStatus = olFlagComplete
+    .Save
+    .Move objFolder  'on error, check whether blnFolderCreated is True/False, usually False means it already exists!
+On Error GoTo 0
+End With
+OL_Simple_Archive = True  'v6.25
+SkipArchive:
+End Function
+
+Private Function OL_Create_objFolder(FolderName As String _
+    , Optional ParentFolder As Outlook.MAPIFolder) As Boolean
+'v2.11 2013-01-10 13:15
+
+Dim olOutlook As Outlook.Application
+
+On Error GoTo ErrorHandler
+Set olOutlook = Application
+'if using outside Outlook e.g. within Excel:
+'Set olOutlook = CreateObject("Outlook.Application")
+If ParentFolder Is Nothing Then
+    Dim ns As Outlook.NameSpace
+    Set ns = olOutlook.GetNamespace("MAPI")
+    Set ParentFolder = ns.GetDefaultFolder(olFolderInbox)
+End If
+ParentFolder.Folders.Add FolderName
+On Error GoTo 0
+
+Set olOutlook = Nothing
+Set ns = Nothing
+Set ParentFolder = Nothing
+
+OL_Create_objFolder = True
+Exit Function
+
+ErrorHandler:
+On Error GoTo 0
+OL_Create_objFolder = False
+
+End Function
+
+Private Function OL_UpperCase(stringToCheck As String) As Boolean
+'v3.03 2013-07-19 18:21
+'source: http://www.freevbcode.com/ShowCode.asp?ID=5198
+    OL_UpperCase = StrComp(stringToCheck, UCase(stringToCheck), vbBinaryCompare) = 0
+End Function
+
+Private Function OL_LowerCase(stringToCheck As String) As Boolean
+'v3.03 2013-07-19 18:21
+'source: http://www.freevbcode.com/ShowCode.asp?ID=5198
+    OL_LowerCase = StrComp(stringToCheck, LCase(stringToCheck), vbBinaryCompare) = 0
+End Function
+
+Sub OL_RemoveAllItemsAndFoldersInDeletedItems()
+'v5.25 2019-01-21 10:28 - OL_RemoveAllItemsAndFoldersInDeletedItems: added
+'source: https://docs.microsoft.com/en-us/office/vba/outlook/how-to/items-folders-and-stores/delete-all-items-and-subfolders-in-the-deleted-items-folder
+Dim oDeletedItems As Outlook.Folder
+ Dim oFolders As Outlook.Folders
+ Dim oItems As Outlook.Items
+ Dim i As Long
+ 'Obtain a reference to deleted items folder
+ Set oDeletedItems = Application.Session.GetDefaultFolder(olFolderDeletedItems)
+ Set oItems = oDeletedItems.Items
+ For i = oItems.Count To 1 Step -1
+ oItems.Item(i).Delete
+ Next
+ Set oFolders = oDeletedItems.Folders
+ For i = oFolders.Count To 1 Step -1
+ oFolders.Item(i).Delete
+ Next
+End Sub

@@ -1,0 +1,212 @@
+Attribute VB_Name = "xlSprocRefresh"
+'xlSprocRefresh
+
+Option Explicit
+Option Compare Text
+
+'NB: using email *groups* doesn't work unless they can accept from external emails
+Private Const sEmailVM As String = "pcinsightvm@company.com"
+Private Const sEmailTeam As String = "recipient@company.com"
+
+Public Const xlSprocRefreshCodeVer As String = _
+"xlSprocRefresh v2.08"
+'v2.08 2019-10-23 16:03 - amended email addresses for emails
+'v2.07 2017-05-22 17:01 - improved error email when passing timeout
+'v2.06 2017-04-05 08:51 - bugfix, wasn't sending failure notice from ErrorHandler_ItemFailed
+'                       - also improved email message with t secs (time to run)
+'v2.05 2017-02-06 16:50 - bugfix, doesn't catch timeout errors, so doing it the blunt way
+'v2.04 2017-02-03 12:05 - added error handler for exceeding Connection Timeout or other failure
+'v2.03 2017-02-03 09:59 - added Check_MC_Time_Limit
+'v2.02 2017-02-01 11:15 - added error handler to check if Proc exists before running
+'v2.01 2017-01-27 16:20 - bugfix attempt
+'v2.00 2017-01-26 09:04 - resets connection if disconnected
+'v1.08 2017-01-25 11:02 - added xlSprocRefreshVer to report back version number when updating
+'v1.07 2017-01-25 07:11 - added xlSprocRefreshCodeVer to allow auto updating module
+'v1.06 2016-10-07 16:05 - makes Excel visible
+'v1.05 2016-10-07 10:51 - improved user control, better error handling
+'v1.04 2016-10-07 07:25 - bugfix in error handlers
+'v1.03 2016-10-03 09:34 - added Application.CalculateBeforeSave
+'v1.02 2016-09-30 09:39 - bugfix from v1.01 in user-level message box
+'v1.01 2016-09-12 10:37 - saves after each run, added bAuto, allows manual partial rerun
+'v1.00
+
+Public Function xlSprocRefreshVer() As String
+xlSprocRefreshVer = xlSprocRefreshCodeVer
+End Function
+
+Private Function SPRefreshType() As String
+'v1.00
+Dim s As String
+s = ThisWorkbook.Name
+s = Left(s, InStr(s, " (master)"))
+SPRefreshType = s
+End Function
+
+Sub refresh_sproc_list()
+'v2.07 2017-05-22 17:01 - improved error email when passing timeout
+'v2.06 2017-04-05 08:51 - bugfix, wasn't sending failure notice from ErrorHandler_ItemFailed
+'                       - also improved email message with t secs (time to run)
+'v2.05 2017-02-06 16:50 - bugfix, doesn't catch timeout errors, so doing it the blunt way
+'v2.04 2017-02-03 12:05 - added error handler for exceeding Connection Timeout or other failure
+'v2.02 2017-02-01 11:15 - added error handler to check if Proc exists before running
+'v2.01 2017-01-27 16:20 - bugfix attempt
+'v2.00 2017-01-26 09:04 - resets connection if disconnected
+'v1.06 2016-10-07 16:05 - makes Excel visible
+'v1.05 2016-10-07 10:51 - improved user control, better error handling
+'v1.04 2016-10-07 07:25 - bugfix in error handlers
+'v1.03 2016-10-03 09:34 - added Application.CalculateBeforeSave
+'v1.02 2016-09-30 09:39 - bugfix from v1.01 in user-level message box
+'v1.01 2016-09-12 10:37 - saves after each run, added bAuto, allows manual partial rerun
+'v1.00
+'uses ADODB to refresh each stored procedure in turn
+
+Application.CalculateBeforeSave = True
+If Application.Visible = False Then Application.Visible = True
+
+Dim bAuto As Boolean
+Dim mbxr As VbMsgBoxResult
+If Environ("Username") = "pcinsightvm" Then
+'always run then quit
+    bAuto = True
+Else
+'ask user
+    mbxr = MsgBox("RETRY to only run today's *failed* sprocs." & vbLf _
+                & vbLf _
+                & "IGNORE to run full process.  (WARNING: this brutally quits and closes all other open workbooks WITHOUT SAVING." & vbLf _
+                & vbLf _
+                & "ABORT to quit." _
+                , vbQuestion Or vbAbortRetryIgnore, "")
+    If mbxr = vbIgnore Then
+        bAuto = True
+    ElseIf mbxr = vbAbort Then
+        Exit Sub
+    End If
+End If
+
+Application.DisplayAlerts = False
+    
+    Dim conn As ADODB.Connection
+    Dim cmd As ADODB.Command
+    Dim rst As New ADODB.Recordset
+    Dim sProc As String
+    Dim iFailCount As Byte
+    
+    Set conn = New ADODB.Connection
+    conn.ConnectionString = "Provider=SQLOLEDB.1;Integrated Security=SSPI;Persist Security Info=True;Initial Catalog=PandC_Sandpit;Data Source=BI-01;Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096;Workstation ID=988XP32;Use Encryption for Data=False;Tag with column collation when possible=False"
+    conn.ConnectionTimeout = 30 'time to connect, usually instantaneous
+     
+    With Sheets("Lists")
+        
+        Set cmd = New ADODB.Command
+        
+        Dim rList As Range, rItem As Range, a As Byte, b As Byte, u As Byte, c As Byte, s As Byte, t As Integer
+        'd isn't necessary, added during testing, delete it when you get chance
+        Dim d As Double
+        Set rList = .Range("list_SProcs")
+        c = Application.Match("Completed", rList.EntireRow, 0)
+        u = Application.Match("Updated", rList.EntireRow, 0)
+        s = Application.Match("timeout s", rList.EntireRow, 0)
+        Set rList = rList.Offset(1)
+        If rList.Offset(1) <> "" Then Set rList = .Range(rList, rList.End(xlDown))
+        b = rList.Cells.Count
+On Error Resume Next
+        For Each rItem In rList.Cells
+            If bAuto = False Then
+            'not running auto, bypass this sproc if it's already run today
+                If Format(Now, "yyyy-mm-dd") = Format(rItem.EntireRow.Cells(c), "yyyy-mm-dd") Then GoTo NextItem
+            End If
+            sProc = rItem.Text
+            Application.StatusBar = "Running " & sProc & " ..."
+            rItem.EntireRow.Cells(u) = Now  'Updated
+            rItem.EntireRow.Cells(c).ClearContents  'Completed
+            iFailCount = 0
+ErrorHandler_ConnectAgain:
+        'check the connection is still open
+            If conn.State = 0 And iFailCount < 3 Then
+                iFailCount = iFailCount + 1
+                conn.Open
+                cmd.ActiveConnection = conn
+                cmd.CommandType = adCmdStoredProc
+            End If
+            cmd.CommandTimeout = rItem.EntireRow.Cells(s)
+        'check if the procedure exists first, code adapted from http://www.ozgrid.com/forum/showthread.php?t=163196
+            sProc = "IF OBJECT_ID('" & rItem.Text & "') IS NOT NULL SELECT 1 AS [Valid] ELSE SELECT 0 AS [Valid];"  'this returns 1 or 0 as the result
+            rst.Open sProc, conn, adOpenForwardOnly, adLockReadOnly
+            rItem.EntireRow.Cells(c).CopyFromRecordset rst  'this puts the result 1 or 0 into the relevant cell
+            rst.Close
+            If rItem.EntireRow.Cells(c) = 0 Then
+                rItem.EntireRow.Cells(c) = "invalid"
+                GoTo ErrorHandler_ItemNotFound
+            Else
+                rItem.EntireRow.Cells(c) = ""   'clears relevant cell ready for result timestamp
+            End If
+        'run the procedure
+            sProc = rItem.Text
+            cmd.CommandText = sProc
+            cmd.Execute
+            If conn.State = 0 Then GoTo ErrorHandler_ConnFailed
+        'this doesn't work, it gives 1 error even when it works fine
+            'If conn.Errors.Count > 0 Then GoTo ErrorHandler_ItemFailed
+            rItem.EntireRow.Cells(c) = Now  'Completed
+            t = (rItem.EntireRow.Cells(c) - rItem.EntireRow.Cells(u)) * 24 * 60 * 60 'Time s
+            If rItem.EntireRow.Cells(s) < t Then GoTo ErrorHandler_ItemFailed
+            modEmail.SendEmail sEmailVM, sEmailTeam, , "Successfully updated: " & SPRefreshType & ": " & sProc, "Updated:     " & rItem.EntireRow.Cells(u) & vbLf & "Completed: " & rItem.EntireRow.Cells(c) & vbLf & "Total time:  " & t / 60 & "mins"
+            t = 0
+            a = a + 1
+            On Error GoTo 0
+NextItem:
+            conn.Errors.Clear
+            ThisWorkbook.Save
+        Next rItem
+
+    End With
+        
+    conn.Close
+
+    Set conn = Nothing
+    Set cmd = Nothing
+    Application.StatusBar = False
+
+On Error GoTo 0
+
+GoTo CleanUp
+
+Dim eBody As String
+Dim wb As Workbook
+
+ErrorHandler_ItemNotFound:
+    modEmail.SendEmail sEmailVM, sEmailTeam, , SPRefreshType & ": Failed", "Procedure doesn't exist - please check name and try again" & vbLf & vbLf & sProc
+    GoTo NextItem
+
+ErrorHandler_ItemFailed:
+    modEmail.SendEmail sEmailVM, sEmailTeam, , SPRefreshType & ": Failed?", "Procedure ran past timeout - please extend connection timeout limit (" & cmd.CommandTimeout & " secs).  Took " & t & " secs to complete" & vbLf & vbLf & sProc
+    GoTo NextItem
+
+ErrorHandler_ConnFailed:
+    modEmail.SendEmail sEmailVM, sEmailTeam, , SPRefreshType & ": Failed", "Procedure didn't run - connection was closed - serious error" & vbLf & vbLf & sProc
+    GoTo CleanUp
+
+CleanUp:
+    If ThisWorkbook.Saved = False Then ThisWorkbook.Save
+    If Not bAuto Then Exit Sub
+'this brutally quits and closes all other open workbooks without saving
+    For Each wb In Workbooks
+        wb.Saved = True
+    Next wb
+    Application.Quit
+End Sub
+
+Sub Check_MC_Time_Limit(ByVal TimeLimitInMins As Integer)
+'v2.03 2017-02-03 09:59 - added Check_MC_Time_Limit
+'call this from modExtra, useful for Mission Critical routines
+Dim TimeLimitInDays As Double
+TimeLimitInDays = TimeLimitInMins / 60 / 24
+With Sheets("Lists")
+    .Calculate
+If .Range("Lists_TotalTime") > TimeLimitInDays Then     '0.02 is about 28 mins
+    modEmail.SendEmail "recipient@company.com", , , "WARNING: " & ThisWorkbook.Name & " nearing time limit" _
+        , "Total time " & Format(.Range("Lists_TotalTime"), "hh:mm:ss") & "<p>Check procedures running in Daily MC file, and split out as required<p><a href=""" & ThisWorkbook.FullName & """>" & ThisWorkbook.Name & "</a><p>" & modEmail.RangetoHTML(Range("admin_EmailTable")) & "<p>" & xlSprocRefreshVer _
+        , False, , , , , True
+End If
+End With
+End Sub

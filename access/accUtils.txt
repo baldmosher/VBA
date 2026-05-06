@@ -1,0 +1,422 @@
+Attribute VB_Name = "accUtils"
+'accUtils
+'=========================================================================
+' VERSION HISTORY
+'=========================================================================
+'v7.00 2020-11-09 10:53 - added acU_ImportDirListing from https://www.devhut.net/2010/09/19/ms-access-vba-import-directory-listing-into-a-table/
+'v6.03 2020-10-20 17:16 - migrated ado_ExecStoredProcedure and ado_ConnectDatabase from accCommercialAudits
+'v6.02 2020-10-19 16:19 - ado_ExecStoredProcedure: added Debug.Print to show when it's failing
+'v6.01 2020-10-15 13:13 - ado_ExecStoredProcedure: added email on failure, doesn't pop up msgbox
+'v6.00 2020-08-04 16:53 - ado_ExecStoredProcedure: executes sproc on BI-01
+'v5.03 2019-01-10 14:39 - added required References
+'v5.02 2015-02-12 15:03 - added Option Explicit
+'v5.01 2015-02-10 12:54 - acU_PrimKey changed to function
+'v5.00 2015-02-10 10:01 - added acU_PrimKey from http://bytes.com/topic/access/answers/679509-finding-primary-key-using-vba
+'v4.02 2014-11-13 18:08 - acU_ChangeQueryPaths, minor error handler bugfix
+'v4.01 2014-09-29 14:12 - acU_Relink_SavedImportExport: added messagebox
+'v4.00 2014-09-29 13:55 - acU_Relink_SavedImportExport added
+'v3.00 2014-09-04 13:12 - acU_DB_Path added
+'v2.02 2014-02-20 11:55 - added AlsoChangeQueries continuation, minor process bugfix
+'v2.01 2014-02-03 15:48 - acU_ChangeQueryPaths, minor error handler bugfix
+'v2.00 2014-01-16 13:46 - added acU_ChangeQueryPaths (does a find & replace in all queries)
+'v1.02 2013-12-05 14:18 - acU_RelinkTables, added Debug.Print for missing tables
+'v1.01 2013-12-04 15:06 - acU_RelinkTables, bugfix for case sensitivity, added t count, improved msgboxes
+'v1.00 2013-12-04 14:31 - added acU_RelinkTables (does a find & replace in linked tables)
+
+'===========================================================================
+' HELP CONTACT
+'===========================================================================
+' Code is provided without warranty and can be stolen and amended as required.
+'   [redacted]
+'   recipient@company.com
+'   http://baldywrittencod.blogspot.com / www.baldmosher.com
+'   DGF Help Contact: see BPMHelpContact module
+'=========================================================================
+
+'===========================================================================
+' accUtils
+'===========================================================================
+'   Various time-saving utilities for Access databases
+'
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   accAuto
+'
+
+'===========================================================================
+' References required:
+'===========================================================================
+'   Microsoft ActiveX Data Objects 2.0 Library
+'   Microsoft Office Access Database Engine Objects Library
+'
+
+Option Explicit
+Option Compare Database
+
+Private connDB As New ADODB.Connection
+Private rs As New ADODB.Recordset
+Private strSQL As String
+Private strConnectionstring As String
+Private strServer As String
+Private strDBase As String
+Private strUser As String
+Private strPwd As String
+
+Public Sub ado_ExecStoredProcedure(ByVal SProcName As String)
+'v6.02 2020-10-19 16:19 - ado_ExecStoredProcedure: added Debug.Print to show when it's failing
+'v6.01 2020-10-15 13:13 - ado_ExecStoredProcedure: added email on failure, doesn't pop up msgbox
+'v6.00 2020-08-04 16:53 - ado_ExecStoredProcedure: executes sproc on BI-01
+'source: https://www.datanumen.com/blogs/call-sql-server-stored-procedure-excel-vba/
+     Call ado_ConnectDatabase
+     On Error GoTo errSP
+     strSQL = "EXEC " & SProcName
+     connDB.Execute (strSQL)
+     Debug.Print "Completed ado_ExecStoredProcedure(" & SProcName & ")"
+     Exit Sub
+errSP:
+Debug.Print "Error in ado_ExecStoredProcedure(" & SProcName & ")"
+modEmail.SendEmail sEmailToAdmin, sRecipients, , "Error in " & Replace(CurrentProject.Name, ".accdb", "") & ": SQL Server connection failed", SProcName & vbLf & vbLf & Err.Description
+If CreateObject("WScript.Network").UserName <> sAutoUser Then MsgBox Err.Description  'this usually means access denied to this user
+End Sub
+
+Public Sub ado_ConnectDatabase(Optional ByRef strServer As String = "BI-01", Optional ByRef strDBase As String = "PandC_Sandpit")
+'v6.00 2020-08-04 16:53 - ado_ConnectDatabase: in conjunction with ado_ExecStoredProcedure, executes sproc on BI-01
+'source: https://www.datanumen.com/blogs/call-sql-server-stored-procedure-excel-vba/
+If connDB.State = 1 Then connDB.Close
+     On Error GoTo ErrConnect
+     If strServer = "" Then strServer = "BI-01" 'The name or IP Address of the SQL Server
+     If strDBase = "" Then strDBase = "PandC_Sandpit"
+     strUser = "" 'leave this blank for Windows authentication
+     strPwd = ""
+
+     If strPwd > "" Then
+         strConnectionstring = "DRIVER={SQL Server};Server=" & strServer & ";Database=" & strDBase & ";Uid=" & strUser & ";Pwd=" & strPwd & ";Connection Timeout=30;"
+     Else
+         strConnectionstring = "DRIVER={SQL Server};SERVER=" & strServer & ";Trusted_Connection=yes;DATABASE=" & strDBase    'Windows authentication
+     End If
+     connDB.ConnectionTimeout = 30
+     connDB.Open strConnectionstring
+Exit Sub
+ErrConnect:
+     MsgBox Err.Description
+End Sub
+
+Public Function acU_PrimKey(tblName As String) As String
+'v5.01 2015-02-10 12:54 - changed to function
+'v5.00 2015-02-10 10:01 - added acU_PrimKey from http://bytes.com/topic/access/answers/679509-finding-primary-key-using-vba
+'*******************************************
+'Purpose: Programatically determine a
+' table's primary key
+'Coded by: raskew
+'Inputs: from Northwind's debug window:
+' Call PrimKey("Products")
+'Output: "ProductID"
+'*******************************************
+
+Dim db As Database
+Dim td As TableDef
+Dim idxLoop As Index
+
+Set db = CurrentDb
+Set td = db.TableDefs(tblName)
+For Each idxLoop In td.Indexes
+If idxLoop.Primary = True Then
+Debug.Print Mid(idxLoop.Fields, 2)
+Exit For
+End If
+Next idxLoop
+
+db.Close
+Set db = Nothing
+End Function
+
+Public Sub acU_RelinkTables(ByVal OldBasePath As String, ByVal NewBasePath As String _
+    , Optional ByVal AlsoChangeQueries As Boolean = True _
+    , Optional ByVal AlsoChangeImportExport As Boolean = True)
+'v4.00 2014-09-29 13:55 - added AlsoChangeImportExport continuation
+'v2.02 2014-02-20 11:55 - added AlsoChangeQueries continuation
+'v1.02 2013-12-05 14:18 - added Debug.Print for missing tables
+'v1.01 2013-12-04 15:06 - bugfix for case sensitivity, added t count, improved msgboxes
+'v1.00 2013-12-04 14:31 - original version from http://database.ittoolbox.com/groups/technical-functional/access-l/how-to-programme-the-linked-table-manager-using-vba-in-ms-access-5185870
+'*******************************************
+'Purpose: pass old & new path to update all linked tables
+'   Macro will run through all the tables in your database and link them to the new location
+'   optionally runs acU_ChangeQueryPaths to make the same path changes in e.g. Data Definition queries
+'   optionally updates Saved Imports/Exports to make the same path changes
+'Original source: Written by John Hawkins 20/9/99 www.fabalou.com
+'via http://database.ittoolbox.com/groups/technical-functional/access-l/how-to-programme-the-linked-table-manager-using-vba-in-ms-access-5185870
+'Syntax:
+'  acU_RelinkTables("\\OldShare\FolderName\", "\\NewShare\FolderName\)
+
+Dim Dbs As Database
+Dim Tdf As TableDef
+Dim Tdfs As TableDefs
+Dim TdfCurrentPath As String
+Dim t As Integer, u As Integer  'NB: practical limit of 65536 linked tables
+Dim pp As String, tt As String  'for msgboxes
+
+Set Dbs = CurrentDb
+Set Tdfs = Dbs.TableDefs
+
+Screen.MousePointer = 11  'shows as "working"
+'Loop through the tables collection
+For Each Tdf In Tdfs
+    If Tdf.SourceTableName <> "" Then 'If the table source is other than a base table
+        TdfCurrentPath = Tdf.Connect
+        If InStr(UCase(TdfCurrentPath), UCase(OldBasePath)) > 0 Then  'If the current path needs to be changed
+            t = t + 1   'count tables processed
+On Error Resume Next
+            Tdf.RefreshLink 'Refresh the link
+            If Err = 3011 Then GoTo OriginalTdfError    'bypasses change if current linked table isn't found
+            Tdf.Connect = Replace(TdfCurrentPath, OldBasePath, NewBasePath)   'Set the new source
+            Tdf.RefreshLink 'Refresh the link
+            If Err = 3011 Then GoTo EscapeOnError    'likely means error in new path - could be critical
+            u = u + 1   'count tables updated
+On Error GoTo 0
+        End If
+    End If
+OriginalTdfError:
+If Err = 3011 Then Debug.Print "Error 3011:  " & Tdf.Name & vbLf & TdfCurrentPath
+Next 'Goto next table
+
+pp = u & " tables have been relinked from " & OldBasePath & " to " & NewBasePath
+If t > u Then pp = pp & vbLf & vbLf & "(" & t - u & " were not updated successfully because the original table was missing)"
+tt = "Tables Relinked"
+
+Screen.MousePointer = 0
+MsgBox pp, vbInformation, tt
+
+If AlsoChangeQueries Then acU_ChangeQueryPaths OldBasePath, NewBasePath  'v2.02
+If AlsoChangeImportExport Then acU_Relink_SavedImportExport OldBasePath, NewBasePath  'v4.00
+
+Exit Sub
+EscapeOnError:
+pp = "Possible major error: please ensure OldBasePath and NewBasePath are correct - you will now be returned to Debug"
+tt = "WARNING"
+MsgBox pp, vbExclamation, tt
+On Error GoTo 0
+Tdf.Connect = TdfCurrentPath 'return to original
+Tdf.RefreshLink 'Refresh the link - errors here means the table was missing before... this needs to be resolved
+'NB: to continue from where you left off, drag arrow up to Next
+
+End Sub
+
+Public Sub acU_ChangeQueryPaths(ByVal OldBasePath As String, ByVal NewBasePath As String)
+'v4.02 2014-11-13 18:08 - minor error handler bugfix
+'v2.02 2014-02-20 11:55 - minor process bugfix
+'v2.01 2014-02-03 15:48 - minor error handler bugfix
+'v2.00 2014-01-16 13:46 - original version
+'pass old & new path to update all queries
+'can be used for ANY type of find & replace in query strings
+'Original source: acU_RelinkTables
+'Syntax:
+'  acU_ChangeQueryPaths("\\OldShare\FolderName\", "\\NewShare\FolderName\)
+
+Dim Dbs As Database
+Dim Qdf As QueryDef
+Dim Qdfs As QueryDefs
+Dim QdfOldSQL As String, QdfNewSQL As String
+Dim q As Integer 'NB: practical limit of 65536 queries
+Dim pp As String, tt As String  'for msgboxes
+
+If Left(OldBasePath, 1) = "\" And Left(NewBasePath, 1) <> "\" _
+Or Right(OldBasePath, 1) = "\" And Right(NewBasePath, 1) <> "\" _
+Or Left(OldBasePath, 1) <> "\" And Left(NewBasePath, 1) = "\" _
+Or Right(OldBasePath, 1) <> "\" And Right(NewBasePath, 1) = "\" _
+Then
+    pp = "Your old and new paths must start/end with ""\"".  Otherwise, errors may occur.  Continue or Exit?" _
+        & vbLf & vbLf & "find:          " & OldBasePath & vbLf & "replace:    " & NewBasePath
+    tt = "CRITICAL WARNING"
+    If MsgBox(pp, vbOKCancel Or vbCritical, tt) = vbCancel Then Exit Sub
+Else
+    pp = "This will Find & Replace in all queries.  There is no validation for this.  Use with caution.  To Undo, simply re-run to correct the error." _
+        & vbLf & vbLf & "find:          " & OldBasePath & vbLf & "replace:    " & NewBasePath
+    tt = "WARNING"
+    If MsgBox(pp, vbExclamation Or vbOKCancel, tt) = vbCancel Then Exit Sub
+End If
+
+Set Dbs = CurrentDb
+Set Qdfs = Dbs.QueryDefs
+
+Screen.MousePointer = 11  'shows as "working"
+For Each Qdf In Qdfs
+On Error GoTo NextQuery
+    QdfOldSQL = Qdf.SQL
+    QdfNewSQL = Replace(QdfOldSQL, OldBasePath, NewBasePath)
+    QdfNewSQL = Replace(QdfNewSQL, "[[", "[")  'v4.02
+    QdfNewSQL = Replace(QdfNewSQL, "]]", "]")  'v4.02
+    If QdfOldSQL <> QdfNewSQL Then
+        q = q + 1
+        Qdf.SQL = QdfNewSQL
+    End If
+NextQuery:
+On Error GoTo 0
+Next 'Goto next query
+
+pp = q & " queries have been updated from " & OldBasePath & " to " & NewBasePath
+tt = "Queries Updated"
+
+Screen.MousePointer = 0
+MsgBox pp, vbInformation, tt
+
+End Sub
+
+Public Function acU_DB_Path() As String
+'v3.00 2014-09-04 13:12 - acU_DB_Path added
+'extracts Path (including trailing slash) from CurrentDB.Name (equivalent of ThisWorkbook.FullName)
+'!! only works on UNC network or local disk databases, not online (http://)
+Dim pth As String, i As Integer, j As Integer
+Const cBsl As String = "\"
+pth = CurrentDb.Name
+i = InStr(pth, cBsl)
+While i > 0
+    j = i
+    i = InStr(i + 1, pth, cBsl)
+Wend
+acU_DB_Path = Left(pth, j)
+End Function
+
+Sub acU_Relink_SavedImportExport(ByVal OldBasePath As String, ByVal NewBasePath As String)
+'v4.01 2014-09-29 14:12 - added messagebox
+'v4.00 2014-09-29 13:54 - acU_Relink_SavedImportExport added
+'does a find & replace of text in SavedImportExport XML specification
+'useful for moving reports onto a new web server or shared drive
+
+Dim IEdf As ImportExportSpecification
+Dim IEdfs As ImportExportSpecifications
+Set IEdfs = CurrentProject.ImportExportSpecifications
+
+Dim s As Byte, pp As String, tt As String
+
+Screen.MousePointer = 11
+
+For Each IEdf In IEdfs
+    If InStr(UCase(IEdf.XML), UCase(OldBasePath)) > 0 Then
+        IEdf.XML = Replace(IEdf.XML, OldBasePath, NewBasePath)
+        s = s + 1
+    End If
+Next IEdf
+
+pp = s & " Import/Export specifications have been updated from " & OldBasePath & " to " & NewBasePath
+tt = "ImportExport Specifications Updated"
+
+Screen.MousePointer = 0
+MsgBox pp, vbInformation, tt
+
+End Sub
+
+Function acU_ImportDirListing(strPath As String, YourTableName As String, YourTableFieldName As String, Optional strFilter As String)
+'v7.00 2020-11-09 10:53 - added acU_ImportDirListing from https://www.devhut.net/2010/09/19/ms-access-vba-import-directory-listing-into-a-table/
+' Author: CARDA Consultants Inc, 2007-01-19
+' Copyright : The following may be altered and reused as you wish so long as the
+'             copyright notice is left unchanged (including Author, Website and
+'             Copyright).  It may not be sold/resold or reposted on other sites (links
+'              back to this site are allowed).
+'
+' strPath = full path include trailing  ie:"c:windows"
+' strFilter = extension of files ie:"pdf".  if you want to return
+'             a complete listing of all the files enter a value of
+'             "*" as the strFilter
+On Error GoTo Error_Handler
+ 
+Dim MyFile  As String
+Dim db      As Database
+Dim sSQL    As String
+ 
+Set db = CurrentDb()
+ 
+'Add the trailing  if it was omitted
+If Right(strPath, 1) <> "" Then strPath = strPath & ""
+'Modify the strFilter to include all files if omitted in the function
+'call
+If strFilter = "" Then strFilter = "*"
+ 
+'Loop through all the files in the directory by using Dir$ function
+MyFile = Dir$(strPath & "*." & strFilter)
+Do While MyFile <> ""
+    'Debug.Print MyFile
+    sSQL = "INSERT INTO [" & YourTableName & "] (" & YourTableFieldName & ") VALUES(""" & MyFile & """)"
+    db.Execute sSQL, dbFailOnError
+    'dbs.RecordsAffected 'could be used to validate that the
+                                    'query actually worked
+    MyFile = Dir$
+Loop
+ 
+Error_Handler_Exit:
+    On Error Resume Next
+    Set db = Nothing
+    Exit Function
+ 
+Error_Handler:
+    MsgBox "The following error has occurred" & vbCrLf & vbCrLf & _
+           "Error Number: " & Err.Number & vbCrLf & _
+           "Error Source: acU_ImportDirListing" & vbCrLf & _
+           "Error Description: " & Err.Description, vbCritical, _
+           "An Error has Occurred!"
+    Resume Error_Handler_Exit
+End Function
+
+
+
+'http://stackoverflow.com/questions/143420/how-can-i-modify-a-saved-microsoft-access-2007-or-2010-import-specification
+'Below are three functions you can use to alter and use the MS Access 2010 Import Specification.
+'The third sub changes the name of an existing import specification.
+'The second sub allows you to change any xml text in the import spec. This is useful if you need to change column names, data types, add columns, change the import file location, etc.. In essence anything you want modify for an existing spec.
+'The first Sub is a routine that allows you to call an existing import spec, modify it for a specific file you are attempting to import, importing that file, and then deleting the modified spec, keeping the import spec "template" unaltered and intact. Enjoy.
+
+Public Sub MyExcelTransfer(myTempTable As String, myPath As String)
+On Error GoTo ERR_Handler:
+    Dim mySpec As ImportExportSpecification
+    Dim myNewSpec As ImportExportSpecification
+    Dim x As Integer
+
+    For x = 0 To CurrentProject.ImportExportSpecifications.Count - 1
+    If CurrentProject.ImportExportSpecifications.Item(x).Name = "TemporaryImport" Then
+        CurrentProject.ImportExportSpecifications.Item("TemporaryImport").Delete
+        x = CurrentProject.ImportExportSpecifications.Count
+    End If
+    Next x
+    Set mySpec = CurrentProject.ImportExportSpecifications.Item(myTempTable)
+    CurrentProject.ImportExportSpecifications.Add "TemporaryImport", mySpec.XML
+    Set myNewSpec = CurrentProject.ImportExportSpecifications.Item("TemporaryImport")
+
+    myNewSpec.XML = Replace(myNewSpec.XML, "\\MyComputer\ChangeThis", myPath)
+    myNewSpec.Execute
+    myNewSpec.Delete
+    Set mySpec = Nothing
+    Set myNewSpec = Nothing
+exit_ErrHandler:
+    For x = 0 To CurrentProject.ImportExportSpecifications.Count - 1
+    If CurrentProject.ImportExportSpecifications.Item(x).Name = "TemporaryImport" Then
+        CurrentProject.ImportExportSpecifications.Item("TemporaryImport").Delete
+        x = CurrentProject.ImportExportSpecifications.Count
+    End If
+    Next x
+Exit Sub
+ERR_Handler:
+    MsgBox Err.Description
+    Resume exit_ErrHandler
+End Sub
+Public Sub fixImportSpecs(myTable As String, strFind As String, strRepl As String)
+    Dim mySpec As ImportExportSpecification
+    Set mySpec = CurrentProject.ImportExportSpecifications.Item(myTable)
+    mySpec.XML = Replace(mySpec.XML, strFind, strRepl)
+    Set mySpec = Nothing
+End Sub
+Public Sub MyExcelChangeName(OldName As String, NewName As String)
+    Dim mySpec As ImportExportSpecification
+    Dim myNewSpec As ImportExportSpecification
+    CurrentProject.ImportExportSpecifications.Add NewName, mySpec.XML
+    mySpec.Delete
+    Set mySpec = Nothing
+    Set myNewSpec = Nothing
+End Sub
+
+
+Sub test()
+acU_RelinkTables "ishare.dhl.com", "ishareold.dhl.com", True, True
+acU_RelinkTables "eshare.dhl.com", "eshareold.dhl.com", True, True
+End Sub
+

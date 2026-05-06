@@ -1,0 +1,2181 @@
+Attribute VB_Name = "xlUtils"
+Option Explicit
+Option Compare Text
+Option Base 1   'v27.00
+Public RunWhen As Double
+'Version History:
+Public Const xlUtilsCodeVer As String = _
+"xlUtils v37.02"
+'v37.02 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v37.01 2019-01-16 15:08 - bugfix: xlU_Remind_User, added RunWhen variable
+'v37.00 2019-01-16 14:24 - xlU_Remind_User: copied from DMX
+'v36.02 2019-01-08 19:03 - xlU_Save_Chart_As_Image: moved to temp folder, except pcinsightvm
+'v36.01 2019-01-08 10:36 - xlU_Save_Chart_As_Image: moved to M: drive
+'v36.00 2019-01-02 12:13 - added xlU_Save_Chart_As_Image
+'v35.00 2018-01-11 09:00 - added get_MySQLDriverName
+'v34.00 2017-08-01 09:23 - added xlU_Clean_Name_Errors
+'v33.07 2017-07-04 09:56 - xlU_SafeToQuitExcel: tweaked to ignore ThisWorkbook save state
+'v33.06 2017-06-16 14:36 - added OnlySheetName option and removes []
+'v33.05 2017-06-06 10:47 - made KeyState code & constants Private
+'v33.04 2017-05-18 09:58 - changed to late binding throughout (still needs Excel reference loaded)
+'v33.03 2017-05-15 09:58 - xlU_WorkbookIsReadOnly: added DisableCloseEvents switch and copied from modAuto
+'v33.02 2017-05-08 13:17 - xlU_Ranges_Change_Scope: removed Enum to prevent VBA errors, added MsgBox
+'v33.01 2017-05-05 10:45 - xlU_Reset_Comment_Sizes: bugfix as ch was not set when 0
+'v33.00 2017-05-04 17:00 - added xlU_IsExcelRunning
+'v32.06 2017-03-06 10:32 - change to msgbox, easier to understand what's going on
+'v32.05 2017-01-25 10:57 - added xlUtilsVer, layout changes
+'v32.04 2017-01-24 13:06 - added xlUtilsCodeVer
+'v32.03 2017-01-20 12:04 - xlU_Remove_Read_Only: bugfix to fix file access delays
+'v32.02 2017-01-20 11:36 - xlU_Save_Make_Read_Only_And_Close: bugfix when saving to temp, kill first
+'v32.01 2017-01-05 15:55 - allows automation on VM for xlU_Save_Make_Read_Only_And_Close and and xlU_Remove_Read_Only
+'v32.00 2017-01-05 10:44 - added xlU_Save_Make_Read_Only_And_Close and xlU_Remove_Read_Only
+'v31.00 2016-09-23 10:39 - added PtrSafe to Declare (works with 64/32-bit)
+'v30.00 2015-10-19 16:34 - added xlU_Replace_In_Formulas
+'v29.00 2015-10-15 09:49 - added xlU_Add_IFERROR
+'v28.00 2015-09-03 12:13 - added xlU_Comments_MoveOnly
+'v27.01 2015-03-17 09:47 - xlU_CF_Replicate_Rows: requires Source and Target to intersect
+'v27.00 2015-03-16 17:31 - xlU_CF_Replicate_Rows: adapted from source: http://www.ozgrid.com/forum/showthread.php?t=138066
+'v26.04 2015-03-09 17:15 - xlU_Text_Capitalise_Words_Exceptions: added BVBA exception
+'v26.03 2015-02-24 17:15 - xlU_WorkbookIsReadOnly: bugfix allows remote Excel app control
+'v26.02 2014-11-10 17:06 - late binding and bugfixes
+'v26.01 2014-09-18 15:55 - xlU_Text_Capitalise_Words_Exceptions bugfix
+'v26.00 2014-09-12 14:02 - added xlU_Text_Capitalise_Words_Exceptions
+'v25.03 2014-09-04 14:05 - added missing v21 macros
+'v25.02 2014-08-29 15:14 - added code from modKeyState
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+'v24.01 2014-05-21 17:27 - xlU_Range_Names_FindAndReplace: tweaked
+'v24.00 2014-05-21 11:04 - added xlU_Range_Names_FindAndReplace
+'v23.00 2014-05-15 15:10 - added xlU_List_Dir_Contents
+'v22.00 2014-05-13 15:38 - added xlU_Extract_Outlook_Emails
+'v21.00 2014-04-03 15:53 - added xlU_Protect_All_Sheets / xlU_Unprotect_All_Sheets
+'v20.04 2014-03-27 10:18 - xlU_Text_Capitalise_Words: bugfix to make e.g. " SA " as company name process better
+'v20.03 2014-03-24 14:46 - xlU_Text_Capitalise_Words: called by xlU_Text_Capitalise_Phrase
+'v20.02 2014-03-24 14:30 - xlU_Text_Capitalise_Words: bugfixes where last character is a space, hyphenated words
+'v20.01 2014-03-24 14:44 - changed to xlU_Text_Capitalise_Words, reliability improvement
+'v20.00 2014-03-05 13:15 - added xlU_Text_Uncapitalise
+'v19.02 2014-02-25 12:15 - xlU_SafeToQuitExcel: bugfix in t counts
+'v19.01 2014-02-06 11:00 - xlU_Deploy_Folders: bugfix, msgbox wit hfolder counts
+'v19.00 2014-02-06 10:25 - added xlU_Deploy_Folders
+'v18.04 2014-01-16 13:01 - xlU_SafeToQuitExcel: option to quit/close automatically
+'v18.03 2013-12-10 17:04 - xlU_SafeToQuitExcel: bugfix in numbers where PERSONAL.XLSB is not open
+'   v18.02   xlU_Transfer_Ranges: bugfix
+'   v18.01   xlU_Ranges_Change_Scope: bugfix when converting to Workbook
+'   v18.00   added xlU_WorkbookIsReadOnly
+'   v17.00   added xlU_SafeToQuitExcel
+'   v16.00   added xlU_Ranges_Change_Scope
+'   v15.00   added xlU_UpdateLinks
+'   v14.00   added xlU_Transfer_Ranges
+'   v13.00   added xlU_Convert_File
+'   v12.00   added xlU_ValidationList
+'   v11.00   added xlU_Export_Single_Sheets
+'           added xlU_Protect_All_Sheets
+'   v10.00   added xlU_BreakLinks
+'   v9.01   xlU_Ranges_Set_To_Column_1_Data_Rows: bugfix (private const)
+'   v9.00   added xlU_Numeric_To_Text
+'           xlU_Clean_Special: removes needless _ from end of string
+'           xlU_Clean_Special: bugfix, VB removes '
+'           removed xlU_Check_Special (now xlSharePoint.SP_Check_Special)
+'           added from xlRanges: xlU_Ranges_Add_Named_After_Column_Headers
+'           added from xlRanges: xlU_Ranges_Set_To_Column_1_Data_Rows
+'   v8.91b   added Private constants
+'   v8.90b  added xlU_Pause_for_Timeout (BETA - doesn't work?)
+'   v8.00   added xlU_Find_And_Replace_Text
+'   v7.04   bugfix xlU_Check_Special; annotations changed
+'   v7.03   option to specify wb/ws in various macros
+'           improved xlU_Clean_Special code and annotations
+'           improved xlU_EmptyFolder warning msgbox
+'           improved xlU_Remove_Spaces warning msgbox
+'   v7.02   improved xlU_Remove_Spaces
+'           Capitalised Macro Names
+'           removed Public from Subs and Functions
+'           annotations improved
+'   v7.01   bugfix in xlU_Check_Special
+'           improved xlU_SheetExists
+'   v7.00   added xlU_Check_Special
+'           added xlU_RemoveAllConnections
+'           improved xlU_removespaces
+'   v6.00   added xlU_reset_comment_sizes
+'   v5.00   xlU_cut_multiple_rows_to_new_location
+
+'   NB: includes code from modKeyState by Chip Pearson
+'   NB: tweaked according to https://msdn.microsoft.com/en-us/library/ee691831.aspx?f=255&MSPPError=-2147217396#odc_office2010_Compatibility32bit64bit_ApplicationProgrammingInterfaceCompatibility
+
+'automation user accounts
+    Private Const sAutomationUser As String = "pcinsightvm|pcopsvm"
+
+Private Const cSpc As String = " "
+Private Const cFsl As String = "/"
+Private Const cBsl As String = "\"
+'Private Const cHyp As String = "-"
+'Private Const cAst As String = "*"
+'Private Const cPrd As String = "."
+'Excel <=2003
+Private Const xxls As String = ".xls"   'FileFormat:=56, Office 2003 macro enabled workbook
+Private Const xxlt As String = ".xlt"   'FileFormat:=??, Office 2003 macro enabled template
+Private Const x2k3 As String = " (2003)" 'added to filename during zip upload, i.e. "Report Name (2003).zip"
+'Excel >2003
+Private Const xxlx As String = ".xlsx"  'FileFormat:=51, Office 2007/10 workbook
+Private Const xxlm As String = ".xlsm"  'FileFormat:=52, Office 2007/10 macro enabled workbook
+Private Const xxlb As String = ".xlsb"  'FileFormat:=??, Office 2007/10 binary workbook
+Private Const xxtm As String = ".xltm"  'FileFormat:=??, Office 2007/10 macro enabled template
+'Other
+Private Const xcsv As String = ".csv"   'FileFormat:=6, CSV file
+
+
+
+'****************************************************************************************
+'****************************************************************************************
+'****************************************************************************************
+'code from modKeyState
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' modKeyState
+' By Chip Pearson, www.cpearson.com, chip@cpearson.com
+' This module contains functions for testing the state of the SHIFT, ALT, and CTRL
+' keys.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+        
+        ''''''''''''''''''''''''''''''''''''''''''''''''''''
+        ' Declaration of GetKeyState API function. This
+        ' tests the state of a specified key.
+        ''''''''''''''''''''''''''''''''''''''''''''''''''''
+        Private Declare PtrSafe Function GetKeyState Lib "user32" ( _
+            ByVal nVirtKey As Long) As Integer
+        'NB: amended to include PtrSafe according to https://msdn.microsoft.com/en-us/library/ee691831.aspx?f=255&MSPPError=-2147217396#odc_office2010_Compatibility32bit64bit_ApplicationProgrammingInterfaceCompatibility
+            
+        ''''''''''''''''''''''''''''''''''''''''''
+        ' This constant is used in a bit-wise AND
+        ' operation with the result of GetKeyState
+        ' to determine if the specified key is
+        ' down.
+        ''''''''''''''''''''''''''''''''''''''''''
+        Private Const KEY_MASK As Integer = &HFF80 ' decimal -128
+        
+        '''''''''''''''''''''''''''''''''''''''''
+        ' KEY CONSTANTS. Values taken
+        ' from VC++ 6.0 WinUser.h file.
+        '''''''''''''''''''''''''''''''''''''''''
+        Private Const VK_LSHIFT = &HA0
+        Private Const VK_RSHIFT = &HA1
+        Private Const VK_LCONTROL = &HA2
+        Private Const VK_RCONTROL = &HA3
+        Private Const VK_LMENU = &HA4
+        Private Const VK_RMENU = &HA5
+        '''''''''''''''''''''''''''''''''''''''''
+        ' The following four constants simply
+        ' provide other names, CTRL and ALT,
+        ' for CONTROL and MENU. "CTRL" and
+        ' "ALT" are more familiar than
+        ' "CONTROL" and "MENU". These constants
+        ' provide no additional functionality.
+        ' They simply provide more familiar
+        ' names.
+        '''''''''''''''''''''''''''''''''''''''''
+        Private Const VK_LALT = VK_LMENU
+        Private Const VK_RALT = VK_RMENU
+        Private Const VK_LCTRL = VK_LCONTROL
+        Private Const VK_RCTRL = VK_RCONTROL
+        
+         ''''''''''''''''''''''''''''''''''''''''''''
+        ' The following constants are used to specify,
+        ' when testing CTRL, ALT, or SHIFT, whether
+        ' the Left key, the Right key, either the
+        ' Left OR Right, or BOTH the Left AND Right
+        ' key is down.
+        '
+        ' By default, the key-test procedures make
+        ' no distinction between the Left and Right
+        ' keys.
+        ''''''''''''''''''''''''''''''''''''''''''''
+        Private Const BothLeftAndRightKeys = 0   ' Note: Bit-wise AND of LeftKey and RightKey
+        Private Const LeftKey = 1
+        Private Const RightKey = 2
+        Private Const LeftKeyOrRightKey = 3      ' Note: Bit-wise OR of LeftKey and RightKey
+        
+        
+        Private Function IsShiftKeyDown(Optional LeftOrRightKey As Long = LeftKeyOrRightKey)
+        ''''''''''''''''''''''''''''''''''''''''''''''''
+        ' IsShiftKeyDown
+        ' Returns TRUE or FALSE indicating whether the
+        ' SHIFT key is down.
+        '
+        ' If LeftOrRightKey is omitted or LeftKeyOrRightKey,
+        ' the function return TRUE if either the left or the
+        ' right SHIFT key is down. If LeftKeyOrRightKey is
+        ' LeftKey, then only the Left SHIFT key is tested.
+        ' If LeftKeyOrRightKey is RightKey, only the Right
+        ' SHIFT key is tested. If LeftOrRightKey is
+        ' BothLeftAndRightKeys, the codes tests whether
+        ' both the Left and Right keys are down. The default
+        ' is to test for either Left or Right, making no
+        ' distiction between Left and Right.
+        ''''''''''''''''''''''''''''''''''''''''''''''''
+            Dim Res As Long
+            
+            Select Case LeftOrRightKey
+                Case LeftKey
+                    Res = GetKeyState(VK_LSHIFT) And KEY_MASK
+                Case RightKey
+                    Res = GetKeyState(VK_RSHIFT) And KEY_MASK
+                Case BothLeftAndRightKeys
+                    Res = (GetKeyState(VK_LSHIFT) And GetKeyState(VK_RSHIFT) And KEY_MASK)
+                Case Else
+                    Res = GetKeyState(vbKeyShift) And KEY_MASK
+            End Select
+            
+            IsShiftKeyDown = CBool(Res)
+        End Function
+
+'****************************************************************************************
+'****************************************************************************************
+'****************************************************************************************
+
+Function xlUtilsVer() As String
+xlUtilsVer = xlUtilsCodeVer
+End Function
+
+Sub xlU_SelectLotsOfSheets(ByVal str As String, Optional ByRef wb As Excel.Workbook)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+'v7.03 2013-05-22 11:51
+'selects all sheets where ws.Name contains str
+'or selects all if str = ""
+
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+Dim blnASU As Boolean
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim blnreplace As Boolean, sh As Excel.Worksheet
+blnreplace = True
+For Each sh In wb.Worksheets
+    If InStr(1, sh.Name, str) Or str = "" Then
+        sh.Select blnreplace
+        blnreplace = False
+    End If
+Next sh
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Sub xlU_ShowAllObjects(Optional ByRef ws As Excel.Worksheet)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+'v7.03 2013-05-22 11:51
+'shows all objects on sheet and sets to Move and Size with cells
+'(permits deletion of columns if hidden comments prevent this)
+
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+If ws Is Nothing Then Set ws = ActiveSheet
+
+Dim blnASU As Boolean
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim s As Excel.Shape
+On Error Resume Next
+For Each s In ws.Shapes
+    s.Placement = xlMoveAndSize
+Next
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Sub xlU_DeleteAllObjects(Optional ByRef ws As Excel.Worksheet)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+'v7.03 2013-05-22 11:51
+
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+If ws Is Nothing Then Set ws = ActiveSheet
+
+Dim blnASU As Boolean
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim s As Shape
+On Error Resume Next
+For Each s In ws.Shapes
+    s.Delete
+Next
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Sub xlU_ShowAllSheets(Optional ByRef wb As Excel.Workbook)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v7.03 2013-05-22 11:51
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+Dim blnASU As Boolean
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim s As Byte
+For s = 1 To wb.Sheets.Count
+    wb.Sheets(s).Visible = True
+Next s
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Function xlU_Remove_Spaces(Optional ByVal str As String) As String
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v7.03 2013-05-22 12:23
+'...from END of string only
+'works through Selection range if str not specified
+
+Const pp As String = "WARNING: cannot undo this action"
+Const tt As String = "xlU_Remove_Spaces"
+If MsgBox(pp, vbOKCancel Or vbCritical, tt) = vbCancel Then Exit Function
+
+Dim bln As Boolean
+bln = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+If str <> vbNullString Then
+    Do Until Not Right(str, 1) = " "
+        str = Left(str, Len(str) - 1)
+    Loop
+    xlU_Remove_Spaces = str
+Else
+'string not specified, so work on all cells in Selection
+    Dim r As Excel.Range
+    For Each r In Selection.Cells
+        Do Until Not Right(r.Value, 1) = " "
+            r.Value = Left(r.Value, Len(r) - 1)
+        Loop
+    Next r
+End If
+
+xl.ScreenUpdating = bln
+
+End Function
+
+Sub xlU_Exit_Design_Mode()
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v1.00
+'always exits
+'!! running any blank macro will also do this?
+
+With xl.CommandBars("Exit Design Mode").Controls(1)
+    If .State = xl.msoButtonDown Then .Execute
+End With
+    
+End Sub
+
+Sub xlU_Enter_Design_Mode()
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v1.00
+'!! sometimes enters, sometimes toggles?
+
+xl.CommandBars("Exit Design Mode").Controls(1).Execute
+'xl.CommandBars.FindControl(ID:=1605).Execute
+    
+End Sub
+
+Sub xlU_EmptyFolder(ByVal fdr As String, Optional ByVal AlsoRmDir As Boolean _
+    , Optional ByVal DoMsgs As Boolean)
+'v7.03 2013-05-22 12:22
+'delete all files from specified folder [and remove folder]
+
+Const pp As String = "WARNING: cannot undo this action"
+Const tt As String = "xlU_EmptyFolder"
+If MsgBox(pp, vbOKCancel Or vbCritical, tt) = vbCancel Then Exit Sub
+
+Const cBsl As String = "\"
+Const cFsl As String = "/"
+Const cSdS As String = "*.*"
+Const emsg As String = "xlU_EmptyFolder failed: path not valid, no slashes"
+
+Dim fn As String, sl As String
+If InStr(fdr, cBsl) > 0 Then sl = cBsl
+If InStr(fdr, cFsl) > 0 Then sl = cFsl
+If sl = vbNullString Then
+    If DoMsgs = True Then MsgBox emsg, vbCritical, tt
+    Exit Sub
+End If
+
+If Right(fdr, 1) <> sl Then fdr = fdr & sl
+
+fn = Dir(fdr & cSdS)
+Do While fn <> vbNullString
+On Error Resume Next
+    Kill fdr & fn
+On Error GoTo 0
+    fn = Dir
+Loop  'all files in folder
+
+If AlsoRmDir = True Then RmDir fdr
+
+End Sub
+
+Function xlU_Clean_Special(ByVal str As String, Optional ByVal CropLength As Boolean = True _
+    , Optional ByVal OnlyFilename As Boolean _
+    , Optional ByVal OnlyVBObjectName As Boolean _
+    , Optional ByVal OnlySheetName As Boolean) As String
+'v33.06 2017-06-16 14:36 - added OnlySheetName option and removes []
+'v9.00 2013-07-25 19:31
+'removes invalid special characters from path/file/VBObject name string
+' CropLength:=True stops message box warnings and autocrops string to 128 chars
+' OnlyFilename:=True also removes slashes \ /
+' OnlyVBObjectName:=True also removes slashes, spaces, hyphens, commas, periods
+' OnlySheetName:=True also crops to 31 characters
+
+'constants (commented if defined below)
+'Const scUS As String = "_"
+Const VBNameLength = 35
+Const SheetNameLength = 31
+Const SharePointFileNameLength = 128
+'consistency checks are done below for the following constants
+Const uniMin As Byte = 0    'first universally forbidden character, MUST BE ZERO
+Const uniMax As Byte = 15   'last universally forbidden character, number set according to how many forbidden characters
+Const slaFSL As Byte = 16   'first slash, always Fsl, AWAYS uniMax+1
+Const slaBSL As Byte = 17   'last slash, always Bsl, AWAYS slaFSL+1
+Const vboMin As Byte = 18   'first VBA forbidden character, AWAYS slaBSL+1
+Const vboMax As Byte = 24   'last VBA forbidden character, number set according to how many forbidden characters
+
+Dim b As Integer, c As Integer, pp As String
+Const tt As String = "ERROR in xlU_Clean_Special"
+Dim sc(uniMin To vboMax) As String
+sc(uniMin) = "~"     'unimin referenced specifically below
+sc(uniMin + 1) = Chr(34) 'Chr(34) = " (quotemark)
+sc(uniMin + 2) = "#"
+sc(uniMin + 3) = "%"
+sc(uniMin + 4) = "&"
+sc(uniMin + 5) = "*"
+sc(uniMin + 6) = ":"
+sc(uniMin + 7) = "<"
+sc(uniMin + 8) = ">"
+sc(uniMin + 9) = "?"
+sc(uniMin + 10) = "{"
+sc(uniMin + 11) = "|"
+sc(uniMin + 12) = "}"
+sc(uniMin + 13) = "["
+sc(uniMin + 14) = "]"
+If uniMin + 15 <> uniMax Then   'consistency check
+    pp = "uniMin + 15 <> uniMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(uniMax) = ".."
+'slashes for filenames and VB Object names (NOT paths)
+sc(slaFSL) = "/"
+sc(slaBSL) = "\"
+'hyphen & space & comma & period & brackets & apostrophe for VB Object names
+sc(vboMin) = "-"
+sc(vboMin + 1) = " "
+sc(vboMin + 2) = ","
+sc(vboMin + 3) = "."
+sc(vboMin + 4) = "("
+sc(vboMin + 5) = "'"
+If vboMin + 6 <> vboMax Then    'consistency check
+    pp = "vboMin + 6 <> vboMax"
+    MsgBox pp, vbCritical, tt
+    End
+End If
+sc(vboMax) = ")"
+
+'remove special characters from all
+For b = uniMin To uniMax
+    str = Replace(str, sc(b), vbNullString)
+Next b
+
+'check filename length (length AFTER the LAST slash max 128 chars)
+b = InStr(1, str, sc(slaFSL))  'look for fwd slash
+If b > 0 Then
+    str = Replace(str, sc(slaBSL), sc(slaFSL))  'remove all back slashes
+    Do Until b = 0  'until last slash found
+        c = b       'c is position of last slash
+        b = b + 1                   'next position
+        b = InStr(b, str, sc(slaFSL))   'next position
+    Loop
+Else  'no fwd slashes
+    b = InStr(1, str, sc(slaBSL))  'look for back slash
+    If b > 0 Then
+        str = Replace(str, sc(slaFSL), sc(slaBSL))  'remove all fwd slashes
+        Do Until b = 0  'until last slash found
+            c = b       'c is position of last slash
+            b = b + 1                   'next position
+            b = InStr(b, str, sc(slaBSL))   'next position
+        Loop
+    End If
+End If
+'c is position of last slash, or 0 if no slashes
+If Len(str) - c > SharePointFileNameLength Then
+    If CropLength = True Then
+        str = Left(str, VBNameLength)
+    Else
+        pp = "WARNING: filename > " & SharePointFileNameLength & " chars" & vbLf & vbLf & str
+        MsgBox pp, vbCritical, tt
+        End
+    End If
+End If
+
+If OnlyFilename = True Or OnlyVBObjectName = True Or OnlySheetName = True Then
+'swap all slashes for spaces - NOT suitable for paths!
+    For b = slaFSL To slaBSL
+        c = InStr(str, sc(b))
+        Do While c > 0
+            str = Left(str, c - 1) & Replace(Right(str, Len(str) - c), sc(b), cSpc)
+            c = InStr(str, sc(b))
+        Loop
+    Next b
+End If
+
+If OnlyVBObjectName = True Then
+'swap hyphens & spaces & periods for underscore in VB object name
+    Const scUS As String = "_"
+    For b = slaFSL To vboMax
+        str = Replace(str, sc(b), scUS)
+    Next b
+'then remove invalid characters from start of string
+    Dim c1 As String
+    c1 = Left(str, 1)
+    Do While c1 = scUS Or c1 = sc(18) Or IsNumeric(c1)
+        str = Right(str, Len(str) - 1)
+        c1 = Left(str, 1)
+    Loop
+'remove double underscore
+    Do While InStr(str, scUS & scUS) > 0
+        str = Replace(str, scUS & scUS, scUS)
+    Loop
+'remove needless underscores from end of string
+    Do While Right(str, 1) = scUS
+        str = Left(str, Len(str) - 1)
+    Loop
+    'check object name length
+    If Len(str) > VBNameLength Then
+        If CropLength = True Then
+            str = Left(str, VBNameLength)
+        Else
+            pp = "WARNING: object name > " & VBNameLength & " chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+'remove needless underscores from end of string
+Do While Right(str, 1) = scUS
+    str = Left(str, Len(str) - 1)
+Loop
+
+'crop length
+If OnlySheetName Then
+    If Len(str) > SheetNameLength Then
+        If CropLength = True Then
+            str = Left(str, SheetNameLength)
+        Else
+            pp = "WARNING: sheet name > " & SheetNameLength & " chars"
+            MsgBox pp, vbCritical, tt
+        End If
+    End If
+End If
+
+xlU_Clean_Special = str
+
+End Function
+
+Function xlU_SheetExists(ByVal wsname As String _
+    , Optional ByRef wb As Excel.Workbook) As Boolean
+'v7.01 2013-04-12 15:00
+'returns TRUE if the sheet exists in the active (or specified) workbook
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+xlU_SheetExists = False
+On Error GoTo NoSuchSheet
+If Len(wb.Sheets(wsname).Name) > 0 Then
+    xlU_SheetExists = True
+    Exit Function
+End If
+
+NoSuchSheet:
+End Function
+
+Function xlU_FileFolderExists(ByVal strFullPath As String) As Boolean
+'v1.00
+'Author       : Ken Puls (www.excelguru.ca)
+'URL          : http://www.excelguru.ca/node/30
+'Macro Purpose: Check if a file or folder exists
+
+    On Error GoTo Skip
+    If Not Dir(strFullPath, vbDirectory) = vbNullString Then xlU_FileFolderExists = True
+    
+Skip:
+    On Error GoTo 0
+
+End Function
+
+Function xlU_GetSpecialFolderNames(Optional ByVal DoDebug As Boolean = True)
+'v7.03 2013-05-22 12:06
+'examples of legacy code only, better to use modSpecialFolders
+'DoDebug = True [default] outputs to Immediate window
+'DoDebug = False pops up series of MsgBoxes
+
+Dim objFolders As Object
+Set objFolders = CreateObject("WScript.Shell").SpecialFolders
+
+Select Case DoDebug
+    Case True
+        Debug.Print objFolders("desktop")
+        Debug.Print objFolders("allusersdesktop")
+        Debug.Print objFolders("sendto")
+        Debug.Print objFolders("startmenu")
+        Debug.Print objFolders("recent")
+        Debug.Print objFolders("favorites")
+        Debug.Print objFolders("mydocuments")
+    Case False
+        MsgBox objFolders("desktop")
+        MsgBox objFolders("allusersdesktop")
+        MsgBox objFolders("sendto")
+        MsgBox objFolders("startmenu")
+        MsgBox objFolders("recent")
+        MsgBox objFolders("favorites")
+        MsgBox objFolders("mydocuments")
+End Select
+
+End Function
+
+Sub xlU_Reset_Comment_Sizes(Optional ByRef ws As Excel.Worksheet _
+    , Optional ByVal CmtHeight As Single _
+    , Optional ByVal CmtWidth As Single)
+'v33.01 2017-05-05 10:45 - bugfix as ch was not set when 0
+'v6.00 2013-03-19 11:18
+'resets all comments on ActiveSheet
+'NB: superseded by version in Delivery KPI Template v3.13b
+
+If ws Is Nothing Then Set ws = ActiveSheet
+
+Dim c As Excel.Comment, ch As Single, cw As Single
+If CmtHeight = 0 Then ch = 60 Else ch = CmtHeight
+If CmtWidth = 0 Then cw = 100 Else cw = CmtWidth
+
+For Each c In ws.Comments
+    c.Shape.Height = ch
+    c.Shape.Width = cw
+Next c
+
+End Sub
+
+Sub xlU_Cut_Multiple_Rows_to_New_Location(Optional ByVal DeleteEmptyRows As Boolean _
+    , Optional ByRef ws As Excel.Worksheet)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v7.03 2013-05-22 13:10
+
+If ws Is Nothing Then Set ws = ActiveSheet
+
+Const RangeToCut As String = "temp_range"
+MsgBox "Highlight all rows to copy, and then name that range 'temp_range'", vbOKCancel
+
+Dim BlankRow As Integer
+BlankRow = CInt(InputBox("Enter a blank row number (normally somewhere below the bottom of the table) where the rows will be pasted"))
+If BlankRow = 0 Then BlankRow = ActiveSheet.Columns(1).Rows(ActiveSheet.Rows.Count).End(xlUp).Offset(1)
+
+xl.Calculation = xlCalculationManual
+Dim blnASU As Boolean
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim rp As Excel.Range, rC As Excel.Range
+On Error GoTo Error_norange
+For Each rC In ws.Range(RangeToCut).Rows
+On Error GoTo 0
+    Set rp = ws.Rows(BlankRow)
+    If rp.Cells(1).Value <> "" Then GoTo Error_notblank
+    If rC.Cells(1).Value <> "" Then
+    'ignores blank rows
+        rp.EntireRow.Insert
+        rC.EntireRow.Copy
+        rp.PasteSpecial xlPasteAll
+xl.CutCopyMode = False
+    End If
+    'clear [and delete] rc row
+    rC.EntireRow.ClearContents
+    If DeleteEmptyRows = True Then rC.EntireRow.Delete
+Next rC
+GoTo DoTheRest
+
+Error_norange:
+    MsgBox "range name " & RangeToCut & " not found"
+GoTo DoTheRest
+
+Error_notblank:
+    MsgBox "blank row not blank"
+GoTo DoTheRest
+
+DoTheRest:
+xl.ScreenUpdating = blnASU
+xl.Calculation = xlCalculationSemiautomatic
+End Sub
+
+Sub xlU_RemoveAllConnections(ByRef wb As Excel.Workbook)
+'v7.00 2013-04-10 10:32
+'removes active connections EXCEPT first connection (necessary for pivot functions)
+'source: http://vbcity.com/forums/t/163459.aspx
+
+If wb.Connections.Count > 1 Then
+Dim i As Integer
+For i = 2 To wb.Connections.Count
+    wb.Connections.Item(1).Delete
+Next i
+Else
+'MsgBox wb.Connections.Count
+End If
+
+End Sub
+
+Sub xlU_RemoveUnusedConnections(ByRef wb As Excel.Workbook)
+'v7.01b 2013-04-12 14:46
+'removes only inactive connections
+MsgBox "xlu_RemoveUnusedConnections doesn't work yet, causes big problems, don't run it"
+Exit Sub  '!!
+
+If wb.Connections.Count > 0 Then
+Dim i As Integer
+For i = 1 To wb.Connections.Count
+    With wb.Connections.Item(i)
+        Debug.Print .Name
+        .Refresh
+        '.Delete
+    End With
+Next i
+Else
+'MsgBox wb.Connections.Count
+End If
+
+End Sub
+
+Sub xlU_Find_And_Replace_Text(ByVal oldstring As String, ByVal newstring As String _
+    , Optional ByRef RangeToFindAndReplace As Excel.Range)
+'v8.00 2013-06-11 13:18
+'bypasses sheet protection restrictions on normal text-only f&r
+
+Dim s As String, spre As String, ssuf As String, c As Excel.Range, b As Byte
+If RangeToFindAndReplace Is Nothing Then Set RangeToFindAndReplace = Selection
+For Each c In RangeToFindAndReplace
+    s = c.Value
+    b = InStr(s, oldstring)
+    If b > 0 Then
+        spre = Left(s, b - 1)
+        ssuf = Mid(s, b + Len(oldstring), Len(s))
+        s = spre & newstring & ssuf
+        c.Value = s
+    End If
+Next c
+
+End Sub
+
+Function xlU_Pause_for_Timeout(Optional ByVal TimeOutInSecs As Long) As Boolean
+'v25.02 2014-08-29 15:21 - modKeyState late binding
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+
+'v8.90b 2013-07-10 16:58
+'reports False if Shift is held down
+'...except it doesn't work!??
+
+Dim t As Long
+
+With xl
+
+    For t = 0 To TimeOutInSecs - 1
+        .StatusBar = "HOLD SHIFT TO BYPASS | updating in " & TimeOutInSecs - t & "..."
+        .Wait Now() + TimeSerial(0, 0, 1)
+        If xlUtils.IsShiftKeyDown = True Then
+            xlU_Pause_for_Timeout = False
+            .StatusBar = "UPDATE CANCELLED BY USER"
+            Exit Function
+        End If
+    Next t
+
+    .StatusBar = False
+
+End With
+
+xlU_Pause_for_Timeout = True
+
+End Function
+
+Sub xlU_Ranges_Set_To_Column_1_Data_Rows()
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v9.01 2013-07-26 16:40
+'Adjusts length of all named ranges on query sheets to match length of data table in column 1
+
+'range names to ignore (can be changed here, or more added in code below):
+Const ex1 As String = "_FilterDatabase"
+Const ex2 As String = "v_"
+
+xl.Calculation = xlCalculationManual
+
+Dim r As Excel.Range, nm As Name, n As String, wn As String, rw() As Long, wmax As Byte, c As Long, qt As QueryTable
+wmax = ActiveWorkbook.Sheets.Count
+'one rw per sheet
+ReDim rw(wmax) As Long
+
+For Each nm In ActiveWorkbook.Names
+    n = nm.Name
+    wn = Mid(nm, 2, Len(nm))
+    wn = Left(wn, InStr(wn, "!") - 1)
+    wn = Replace(wn, "'", "")
+    For Each qt In ThisWorkbook.Sheets(wn).QueryTables
+    'count rows in column 1 for this sheet and adjust ranges to cover
+        c = Sheets(wn).Columns(1).EntireColumn.Cells(Sheets(wn).Rows.Count).End(xlUp).Row
+        rw(Sheets(wn).Index) = c
+        
+        If InStr(nm, "REF!") > 0 Then
+        'range reference error, delete
+            nm.Delete
+        
+        ElseIf InStr(nm.Name, ex1) > 0 Then
+        'query reference, ignore it
+        
+        ElseIf InStr(nm.Name, ex2) > 0 Then
+        'validation table, ignore it
+        
+        ElseIf Range(nm).Rows.Count <> c Then
+        'range is wrong length
+            Sheets(wn).Select
+        'find length of data set from Column 1
+            Set r = Range(nm).EntireColumn.Rows(rw(Sheets(wn).Index))
+            Set r = Range(r, r.EntireColumn.Cells(1))
+        're-add range name
+            nm.Delete
+            ActiveWorkbook.Names.Add n, r
+        End If
+    Next qt
+Next nm
+
+End Sub
+
+Sub xlU_Ranges_Add_Named_After_Column_Headers(Optional ByRef xlU_Worksheet As Excel.Worksheet _
+    , Optional IncludeHeaders As Boolean = True)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v9.00 2013-07-25 19:29
+'Adds range names according to column headers and length of data table in column 1
+
+Dim rHeader As Excel.Range, rColumn As Excel.Range, r As Long, rName As String
+If xlU_Worksheet Is Nothing Then Set xlU_Worksheet = ActiveSheet
+With xlU_Worksheet
+'count rows in column 1
+r = xl.CountA(.Columns(1).EntireColumn)
+If .Columns(1).Cells(.Rows.Count).End(xlUp).Row <> r Then
+    MsgBox "Column 1 must have continuous data otherwise counts fail", vbCritical, "Error in xlU_Add_Ranges_Named_After_Column_Headers"
+    Exit Sub
+End If
+Const rOffset As Byte = 1
+If IncludeHeaders = False Then r = r - rOffset 'excludes header
+
+For Each rHeader In .Rows(1).Cells
+    If rHeader.Value = "" And rHeader.Offset(0, 1).Value = "" Then Exit Sub
+    If IncludeHeaders = False Then
+        Set rColumn = .Range(rHeader.Cells.Offset(1), rHeader.Cells.Offset(r))
+    Else
+        Set rColumn = .Range(rHeader.Cells(1), rHeader.Cells(r))
+    End If
+    rName = xlU_Clean_Special(.Name & "_" & rHeader.Value, True, , True)
+    ThisWorkbook.Names.Add rName, rColumn
+Next rHeader
+End With
+
+End Sub
+
+Sub xlU_Numeric_To_Text(ByRef xlU_Range As Excel.Range)
+'v9.00 2013-07-25 19:46
+'NB: Excel may convert to numeric before this point, e.g. when entering 07 will convert to 7 and thus '7
+
+Dim s As String, r As Excel.Range
+Const cApo As String = "'"
+For Each r In xlU_Range.Cells
+    If IsNumeric(r.Value) Then
+        s = cApo & r.Text
+        r.Value = s
+    End If
+Next r
+
+End Sub
+
+Function xlU_BreakLinks(ByRef wb As Excel.Workbook) As Boolean
+'v10.00 2013-07-31 14:06
+'reports False if no Links to break or any other error, otherwise True
+
+xlU_BreakLinks = True
+On Error GoTo ErrorHandler
+Dim lnk As Variant, i As Integer
+With wb
+    lnk = .LinkSources(xlLinkTypeExcelLinks)
+On Error GoTo NothingToBreak
+    For i = 1 To UBound(lnk)
+On Error GoTo ErrorHandler
+        .BreakLink lnk(i), xlLinkTypeExcelLinks
+    Next i
+End With
+NothingToBreak:
+Exit Function
+
+ErrorHandler:
+xlU_BreakLinks = False
+On Error GoTo 0
+End Function
+
+Sub xlU_Export_Single_Sheets(ByVal OutputPath As String _
+    , ByVal OutputXLSX As Boolean, ByVal OutputXLS As Boolean, ByVal OutputCSV As Boolean _
+    , Optional ByVal xlU_Password As String)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v11.00 2013-07-31 16:16
+'saves a copy of each sheet as a separate lookup file (XLSX and/or XLS and/or CSV)
+'filename for each file is [ThisWorkbook.Name & " " & Sheet.Name].[xlsx|xls|csv]
+
+Const v7 As Byte = 12
+If Val(xl.Version) < v7 Then
+    MsgBox "Only works in Excel 2007 or later", vbCritical, "xlU_Export_Single_Sheets"
+    Exit Sub
+End If
+
+xlU_Protect_All_Sheets True, xlU_Password
+
+xl.ScreenUpdating = False
+
+Const cDDD As String = "..."
+Const cSep As String = "  |  "
+Const cSpc As String = " "
+Const cBsl As String = "\"
+Const cFsl As String = "/"
+Const cURL As String = "http:"
+Dim wb As Excel.Workbook, fn As String, shn As String, rw As Integer, f As Byte, p As Byte
+
+'original filename
+fn = Replace(Replace(ThisWorkbook.Name, ".xlsm", ""), " (master)", "")  'no extension, remove " (master)"
+
+'fix potential path errors
+'convert OutputPath to UNC (URL doesn't work) and force connection
+OutputPath = Replace(OutputPath, cFsl, cBsl)
+OutputPath = Replace(OutputPath, cURL, "")
+If Right(OutputPath, 1) <> cBsl Then OutputPath = OutputPath & cBsl
+Shell "explorer " & OutputPath, vbHide
+
+Dim aSBorig, aSBbase As String, aSBdft As String
+aSBorig = xl.StatusBar
+aSBdft = fn
+aSBbase = aSBdft & cSep & "Saving separate single-sheet files"
+xl.StatusBar = aSBbase
+
+Dim s As Excel.Worksheet
+For Each s In ThisWorkbook.Sheets
+    With s
+        xl.StatusBar = aSBbase & cSep & .Name & cDDD
+On Error Resume Next
+        .Unprotect xlU_Password
+On Error GoTo 0
+        shn = .Name
+        .Copy  'to new wb
+        Set wb = ActiveWorkbook
+On Error Resume Next
+        .Protect xlU_Password
+On Error GoTo 0
+    End With
+    With wb
+        xlU_BreakLinks wb
+        With .Sheets(1)
+            rw = xl.CountA(.Columns(1)) + 1
+            .Rows(rw & ":" & .Rows.Count).Delete
+            .Protect xlU_Password
+        End With
+        xl.DisplayAlerts = False
+        If OutputXLSX = True Then .SaveAs FileName:=OutputPath & fn & cSpc & shn & ".xlsx", FileFormat:=51 'Logis Station Groups Logis Air Station Codes.xlsx
+        If OutputXLS = True Then .SaveAs FileName:=OutputPath & fn & cSpc & shn & ".xls", FileFormat:=56  'Logis Station Groups Logis Air Station Codes.xls
+        If OutputCSV = True Then .SaveAs FileName:=OutputPath & fn & cSpc & shn & ".csv", FileFormat:=6   'Logis Station Groups Logis Air Station Codes.csv
+        .Close
+        xl.DisplayAlerts = True
+    End With
+    Set wb = Nothing
+Next s
+
+xl.ScreenUpdating = True
+xl.StatusBar = aSBorig
+
+xlU_Protect_All_Sheets True, xlU_Password
+
+End Sub
+
+Sub xlU_Protect_All_Sheets(ByVal DoProtect As Boolean, Optional xlU_Password As String)
+'v11.00 2013-07-31 15:51
+
+On Error Resume Next
+Dim s As Excel.Worksheet
+For Each s In ThisWorkbook.Sheets
+With s
+    If DoProtect = True Then .Protect xlU_Password Else .Unprotect xlU_Password
+End With
+Next s
+On Error GoTo 0
+
+End Sub
+
+Function xlU_TransferValidationList(ByRef vSource As Excel.Range, ByRef vTarget As Excel.Range) As Boolean
+'v12.00 2013-08-02 13:05
+'returns True if transferred OK
+'max 1 cell in vTarget and vSource
+'could easily be adapted to copy validations across a whole row from a source row
+'e.g.:
+'    With Target.EntireRow
+'        For i = 1 To .Cells.Count  'NB: this is very inefficient! Limit this to e.g. columns with headers
+'            xlU_TransferValidationList .Cells(i), Domains.Rows(2).Cells(i)
+'        Next i
+'    End With
+ 
+On Error GoTo ErrorHandler
+Dim c As Byte
+c = vSource.Cells.Count
+If c > 1 Then GoTo ErrorHandler
+With vTarget.Validation
+    On Error Resume Next
+    .Delete
+    On Error GoTo ErrorHandler
+    .Add Type:=vSource.Validation.Type, AlertStyle:=vSource.Validation.AlertStyle, Operator:= _
+        vSource.Validation.Operator, Formula1:=vSource.Validation.Formula1
+    .IgnoreBlank = vSource.Validation.IgnoreBlank
+    .InCellDropdown = vSource.Validation.InCellDropdown
+    .InputTitle = vSource.Validation.InputTitle
+    .InputMessage = vSource.Validation.InputMessage
+    .ErrorTitle = vSource.Validation.ErrorTitle
+    .ErrorMessage = vSource.Validation.ErrorMessage
+    .ShowInput = vSource.Validation.ShowInput
+    .ShowError = vSource.Validation.ShowError
+End With
+     
+xlU_TransferValidationList = True
+     
+ErrorHandler:
+End Function
+
+Function xlU_Transfer_Ranges(ByRef srcws As Excel.Worksheet, tgtws As Excel.Worksheet)
+'v18.02 2013-12-03 17:33
+'takes all worksheet ranges from src ws and replicates on tgt ws
+
+On Error Resume Next
+Dim rng As Excel.Range, rn As String, nm As Name
+For Each nm In srcws.Names
+    tgtws.Names.Add Replace(nm.Name, srcws.Name, tgtws.Name), Replace(nm.Value, srcws.Name, tgtws.Name)
+Next nm
+
+End Function
+
+Function xlU_Convert_File(ByRef PathFile As String _
+    , ByVal FileFormat As XlFileFormat, ByVal SourceIsXML As Boolean _
+    , Optional ByVal DeleteOriginal As Boolean) As Boolean
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v13.00 2013-08-08 14:40
+'opens any compatible format file (must be specified if source in XML format)
+'saves as chosen output file format
+'will output to CSV, XLS, XLSX, XLSM (add more types below if required)
+
+On Error GoTo ErrorHandler
+Dim tempPathFile As String, newPathFile As String, x1 As Byte, x2 As Byte
+
+newPathFile = PathFile
+x1 = InStr(newPathFile, ".")
+x2 = x1
+Do While x2 > 0
+    x1 = x2
+    x2 = InStr(x2 + 1, newPathFile, ".")
+Loop
+If x1 > 0 Then newPathFile = Left(newPathFile, x1 - 1)  'removes extension
+
+tempPathFile = newPathFile & ".temp"
+If Dir(tempPathFile) <> "" Then Kill tempPathFile  'target already exists
+FileCopy PathFile, tempPathFile  'copy to target
+
+If FileFormat = 6 Then
+    newPathFile = newPathFile & xcsv
+ElseIf FileFormat = 56 Then
+    newPathFile = newPathFile & xxls
+ElseIf FileFormat = 51 Then
+    newPathFile = newPathFile & xxlx
+ElseIf FileFormat = 52 Then
+    newPathFile = newPathFile & xxlm
+Else
+    MsgBox "FileFormat " & FileFormat & " not allowed, but can add to macro code if required", vbCritical, "xlU_Convert_File"
+End If
+
+xl.DisplayAlerts = False
+If SourceIsXML Then
+    Workbooks.OpenXML FileName:=tempPathFile, LoadOption:=xlXmlLoadImportToList
+Else
+    Workbooks.Open tempPathFile
+End If
+ActiveWorkbook.SaveAs newPathFile, FileFormat
+ActiveWorkbook.Close False
+If DeleteOriginal = True Then Kill PathFile
+Kill tempPathFile  'doesn't delete temp file if there's an error
+xlU_Convert_File = True
+Exit Function
+
+ErrorHandler:
+End Function
+
+Function xlU_UpdateLinks(Optional wb As Excel.Workbook) As Boolean
+'v15.00 2013-08-27 11:36
+'source: http://www.thecodecage.com/forumz/microsoft-excel-forum/212417-excel-visual-basic-applications-update-all-external-links.html
+
+On Error GoTo ErrorHandler
+xlU_UpdateLinks = True
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+Dim Links As Variant
+Dim i As Integer
+With wb
+    Links = .LinkSources(xlExcelLinks)
+    If Not IsEmpty(Links) Then
+        For i = 1 To UBound(Links)
+            .UpdateLink Links(i), xlLinkTypeExcelLinks
+        Next i
+    End If
+End With
+
+Exit Function
+
+ErrorHandler:
+xlU_UpdateLinks = False
+End Function
+
+Function xlU_Ranges_Change_Scope(ByVal xluWorksheet As Excel.Worksheet, ByVal xluWorkbook As Excel.Workbook _
+    , Optional ByVal xluScopeChange As Byte = 0, Optional ByVal xluDeleteOriginalName As Boolean = False) As Boolean
+'v33.02 2017-05-08 13:17 - xlU_Ranges_Change_Scope: removed Enum to prevent VBA errors, added MsgBox
+'v18.01 2013-12-03 09:59
+'changes scope of Range Names from Worksheet to Workbook (0), or vice versa (1)
+'only creates Name in xluWorksheet if Name refers to xluWorksheet, but can easily run for each sheet in turn
+
+'original Enum causes VBA updater to fail, so don't use it
+If xluScopeChange = 0 Then
+    MsgBox "Please specify xluScopeChange:" & vbLf & "xluWorksheetToWorkbook = 1" & vbLf & "xluWorkbookToWorksheet = 2", vbInformation
+    Exit Function
+End If
+
+On Error Resume Next
+
+Dim nm As Name, newWBname As String
+If xluScopeChange = 1 Then
+    For Each nm In xluWorksheet.Names
+        If InStr(nm.Value, "#REF!") = 0 Then
+            newWBname = Mid(nm.Name, InStr(nm.Name, "!") + 1, Len(nm.Name)) 'v18.01
+            xluWorkbook.Names.Add newWBname, nm.Value                       'v18.01
+            If xluDeleteOriginalName Then nm.Delete
+        End If
+    Next nm
+    
+ElseIf xluScopeChange = 2 Then
+    For Each nm In xluWorkbook.Names
+        If InStr(nm.Value, xluWorksheet.Name) > 0 And InStr(nm.Value, "#REF!") = 0 Then
+            xluWorksheet.Names.Add nm.Name, nm.Value
+            If xluDeleteOriginalName Then nm.Delete
+        End If
+    Next nm
+
+End If
+
+End Function
+
+Function xlU_SafeToQuitExcel(Optional ByVal QuitIfSafeOtherwiseCloseThisWorkbookWithoutSaving As Boolean _
+    , Optional ByVal DisableCloseEvents As Boolean) As Boolean
+'v33.07 2017-07-04 09:56 - tweaked to ignore ThisWorkbook save state
+'v33.03 2017-05-15 09:58 - added DisableCloseEvents switch and copied from modAuto
+'copied from modAuto
+'v3.12 2016-02-29 08:36 - improved xlQuit routine
+'copied from xlUtils
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v19.02 2014-02-25 12:15 - bugfix in t counts
+'v18.04 2014-01-16 13:01 - option to quit/close automatically
+'v18.03 2013-12-10 17:04 - bugfix in numbers where PERSONAL.XLSB is not open
+'v17.00 2013-10-30 12:41
+'True if all open Workbooks (including this one but excluding PERSONAL.XLSB) are saved
+'False if any workbooks need saving (not safe to quit)
+
+    Dim wb As Excel.Workbook, t As Byte
+    t = 0
+    For Each wb In Workbooks
+        If wb.Name <> ThisWorkbook.Name And wb.Name <> "PERSONAL.XLSB" And wb.Saved <> True Then t = t + 1
+    Next wb
+    If t = 0 Then xlU_SafeToQuitExcel = True
+    
+    If QuitIfSafeOtherwiseCloseThisWorkbookWithoutSaving Then
+    'NB: ThisWorkbook should always be saved prior to running this function
+        xl.DisplayAlerts = False
+        If DisableCloseEvents Then xl.EnableEvents = False
+        If xlU_SafeToQuitExcel = True Then xl.Quit Else ThisWorkbook.Close False
+    End If
+
+End Function
+
+Function xlU_WorkbookIsReadOnly(Optional wb As Excel.Workbook, Optional xluXLapp As Excel.Application) As Boolean
+'v26.03 2015-02-24 17:15 - bugfix allows remote Excel app control
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+'v18.00 2013-10-30 16:12
+'Workbook.ReadOnly works for local files, but isn't reliable with SharePoint files
+
+If xluXLapp Is Nothing And InStr(Application.Name, "Excel") Then Set xluXLapp = Application
+On Error Resume Next    'bugfix necessary to prevent wb opened in another Excel window
+If wb Is Nothing Then
+    Set wb = ActiveWorkbook
+Else
+    xluXLapp.wb.Activate         'bugfix corrects this line - can't activate in another Excel window
+End If
+
+If InStr(1, xluXLapp.Caption, "Read-Only") > 1 _
+Or InStr(1, xluXLapp.ActiveWindow.Caption, "Read-Only") > 1 _
+Then xlU_WorkbookIsReadOnly = True
+
+End Function
+
+Sub xlU_Deploy_Folders(ByVal BasePath As String _
+    , Optional ByVal LevelLookup As String = "\\sharepoint.company.com\sites\SiteName\FolderName\Output File Name.xlsb" _
+    , Optional ByVal sLevel3Header As String = "Team" _
+    , Optional ByVal sLevel2Header As String = "Manager" _
+    , Optional ByVal sLevel1Header As String = "Destination" _
+    , Optional ByVal AddAlphanumericSubfolders As Boolean = False _
+    , Optional ByVal DebugMode As Boolean = False)
+'v33.03 2017-05-15 09:58 - tweaked default parameters to company example
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v19.01 2014-02-06 11:00
+'Creates folder structure beneath BasePath for each specified level.
+'Requires a reference Lookup file to be in place in order to create structure.  This lookup must
+'have the specified named column headers, but can be in any order.  The macro only uses
+'columns that are specified.  The contents of these columns determines the folder names.
+
+'syntax:
+'   xlU_Deploy_Folders "C:\Users\" & Environ("Username") & "\Documents\recursetest\"
+
+'e.g.
+'   AddAlphanumericSubfolders = True   will add A, B, C, D, E, ... Z and "0-9" subfolders within each Level1 folder
+'   sLevel1Header = "Country Code"     mandatory top level (within this, can optionally AddAlphanumericSubfolders)
+'   sLevel2Header = "Sub-Region"       level 1 grouped by this, if not required use ""
+'   sLevel3Header = "Region Code"      level 2 grouped by this, if not required use ""
+
+'NB:
+'   Gaps (empty cells) in Level1 column will stop the macro partway down the list.  Use
+'   apostrophe (') for all blank cells in this column.  Zero-length strings ("") will be
+'   replaced by sNotAssigned
+Const sNotAssigned As String = "_other"
+
+On Error Resume Next
+
+'check BasePath exists
+If Right(BasePath, 1) <> "\" Then BasePath = BasePath & "\"
+If Dir(BasePath, vbDirectory) <> "." Then  'error here means folder not found
+    MkDir BasePath
+    If Dir(BasePath, vbDirectory) <> "." Then  'error here means folder not created
+        MsgBox "BasePath not found" & vbLf & vbLf & BasePath, vbCritical, "Fatal Error"
+        Exit Sub
+    End If
+End If
+
+'check LevelLookup exists
+If Dir(LevelLookup, vbDirectory) = "" Then  'error here means file not found
+    MsgBox "LevelLookup not found" & vbLf & vbLf & LevelLookup, vbCritical, "Fatal Error"
+    Exit Sub
+End If
+
+'open LevelLookup, check that all required column headers exist in row 1
+Dim wbLU As Excel.Workbook, wsLU As Excel.Worksheet, rLUhdr As Excel.Range
+Dim bColumnFail As Boolean, cmax As Byte, rmax As Long
+Dim bLevel1 As Byte, bLevel2 As Byte, bLevel3 As Byte
+Dim rLevel1 As Excel.Range, rLevel2 As Excel.Range, rLevel3 As Excel.Range
+Set wbLU = Workbooks.Open(LevelLookup, False, True)
+If wbLU Is Nothing Then
+    MsgBox "LevelLookup not found" & vbLf & vbLf & LevelLookup, vbCritical, "Fatal Error"
+    Exit Sub
+Else
+    Set wsLU = wbLU.Sheets(1)
+    Set rLUhdr = wsLU.Rows(1)
+    bLevel1 = xl.Match(sLevel1Header, rLUhdr, 0)
+    bLevel2 = xl.Match(sLevel2Header, rLUhdr, 0)
+    bLevel3 = xl.Match(sLevel3Header, rLUhdr, 0)
+    If bLevel1 = 0 And sLevel1Header <> "" Then
+        bColumnFail = True
+    Else
+        cmax = 1
+        Set rLevel1 = rLUhdr.Cells(bLevel1)
+        Set rLevel1 = wsLU.Range(rLevel1.Offset(1), rLevel1.End(xlDown))
+        rmax = rLevel1.Cells.Count
+        If bLevel2 = 0 And sLevel2Header <> "" Then
+            bColumnFail = True
+        Else
+            cmax = 2
+            Set rLevel2 = rLUhdr.Cells(bLevel2)
+            Set rLevel2 = wsLU.Range(rLevel2.Offset(1), rLevel2.End(xlDown))
+            If bLevel3 = 0 And sLevel3Header <> "" Then
+                bColumnFail = True
+            Else
+                cmax = 3
+                Set rLevel3 = rLUhdr.Cells(bLevel3)
+                Set rLevel3 = wsLU.Range(rLevel3.Offset(1), rLevel3.End(xlDown))
+            End If
+        End If
+    End If
+    If bColumnFail Then
+        MsgBox "LevelLookup does not contain correct columns for chosen options.  Please check the macro in VBA for advice.  (NB: LevelLookup was opened Read-Only)", vbCritical, "Fatal Error"
+        Exit Sub
+    End If
+End If
+
+'load Level1, Level2, Level3 into array (memory) prior to recurse
+Dim arrRecurse() As String, NewPath As String, r As Integer, c As Byte, f As Long, a As Long
+If MsgBox("LevelLookup contains " & rmax & " " & sLevel1Header & "s.  Continue?", vbYesNo Or vbQuestion, "Fatal Error") = vbNo Then
+    Exit Sub
+End If
+ReDim arrRecurse(1 To rmax, 0 To cmax) As String
+'so, e.g. for countries:
+'AD is always arrRecurse(1,1), EMEA is always arrRecurse(1,2), EURO always arrRecurse(1,3)
+For r = 1 To rmax
+    arrRecurse(r, 1) = rLevel1.Cells(r)
+    If arrRecurse(r, 1) = "" Then arrRecurse(r, 1) = sNotAssigned
+    If cmax >= 2 Then
+        arrRecurse(r, 2) = rLevel2.Cells(r)
+        If arrRecurse(r, 2) = "" Then arrRecurse(r, 2) = sNotAssigned
+        If cmax = 3 Then
+            arrRecurse(r, 3) = rLevel3.Cells(r)
+            If arrRecurse(r, 3) = "" Then arrRecurse(r, 3) = sNotAssigned
+        End If
+    End If
+    If DebugMode Then Debug.Print arrRecurse(r, 1) & "  " & arrRecurse(r, 2) & "  " & arrRecurse(r, 3)
+Next r
+
+'close lookup
+wbLU.Close False
+
+'now recurse through array, creating folders
+For r = 1 To rmax
+    NewPath = BasePath
+    If DebugMode Then Debug.Print NewPath
+    If cmax = 3 Then
+        NewPath = NewPath & arrRecurse(r, 3) & "\"
+        If DebugMode Then Debug.Print NewPath
+        If Dir(NewPath, vbDirectory) <> "." Then
+            MkDir NewPath
+            f = f + 1
+        Else
+            a = a + 1
+        End If
+    End If
+    If cmax >= 2 Then
+        NewPath = NewPath & arrRecurse(r, 2) & "\"
+        If DebugMode Then Debug.Print NewPath
+        If Dir(NewPath, vbDirectory) <> "." Then
+            MkDir NewPath
+            f = f + 1
+        Else
+            a = a + 1
+        End If
+    End If
+    If cmax >= 1 Then
+        NewPath = NewPath & arrRecurse(r, 1) & "\"
+        If DebugMode Then Debug.Print NewPath
+        If Dir(NewPath, vbDirectory) <> "." Then
+            MkDir NewPath
+            f = f + 1
+        Else
+            a = a + 1
+        End If
+    End If
+    If AddAlphanumericSubfolders Then
+        If Dir(NewPath & "0-9\", vbDirectory) <> "." Then
+            MkDir NewPath & "0-9\"
+            f = f + 1
+        Else
+            a = a + 1
+        End If
+        For c = 65 To 90
+            If Dir(NewPath & Chr(c) & "\", vbDirectory) <> "." Then
+                MkDir NewPath & Chr(c) & "\"
+                f = f + 1
+            Else
+                a = a + 1
+            End If
+        Next c
+    End If
+Next r
+
+MsgBox "Done, created " & f & " new folders, " & a & " already existed"
+
+End Sub
+
+Function xlU_Text_Capitalise_Phrase(Optional ByRef rPhrases As Excel.Range, Optional ByVal sWordOrPhrase As String) As String
+'v20.03 2014-03-24 14:46 - now calls xlU_Text_Capitalise_Words
+'v20.01 2014-03-24 14:44 - now converts to lower case then converts first character after a space into CAPS
+'converts SOME STRING or some string into Some String (or range of strings)
+'NB: Some Phrase,Like This will convert to Some Phrase,like This
+If sWordOrPhrase <> "" Then
+'process string
+    sWordOrPhrase = LCase(sWordOrPhrase)
+    xlU_Text_Capitalise_Phrase = xlU_Text_Capitalise_Words(sWordOrPhrase)
+ElseIf Not rPhrases Is Nothing Then
+'process all cells in range
+    For Each rPhrases In rPhrases.Cells
+        sWordOrPhrase = rPhrases.Text
+        sWordOrPhrase = xlU_Text_Capitalise_Words(sWordOrPhrase)
+        If rPhrases.Text <> sWordOrPhrase Then rPhrases.Value = "" & sWordOrPhrase
+        sWordOrPhrase = ""
+    Next rPhrases
+    MsgBox "Review all cells to check for errors and oddities with conversion"
+Else
+    MsgBox "Must specify range or string to convert", vbCritical, "xlU_Text_Uncapitalise: ERROR"
+End If
+End Function
+
+Function xlU_Text_Capitalise_Words(ByVal s As String) As String
+'v26.00 2014-09-12 14:02 - added specific exceptions listed below
+'v25.04 2014-09-12 11:14 - added alphanumeric exc and more common exceptions, BAE, USAF, RAF, 3M
+'v20.04 2014-03-27 10:18 - bugfix to make e.g. " SA " as company name process better
+'v20.03 2014-03-24 14:46 - called by xlU_Text_Capitalise_Phrase
+'v20.02 2014-03-24 14:30 - bugfixes where last character is a space, hyphenated words
+Dim a As Byte, h As Byte, z As Byte, w As String, bReCap As Boolean
+If s = "" Then Exit Function
+'MIXED CAPITALISE WHOLE STRING (also puts a space at end of string to prevent errors)
+    s = UCase(Left(s, 1)) & LCase(Right(s, Len(s) - 1)) & " "
+'find first space (word) in string
+    a = InStr(s, " ")
+'override position for Hyphenated-phrases
+    h = InStr(s, "-")
+    If h <> 0 And h < a Then a = h
+'override position for Badly,spaced,phrases
+    h = InStr(s, ",")
+    If h <> 0 And h < a Then a = h
+'override position for Badly.spaced.phrases
+    h = InStr(s, ".")
+    If h <> 0 And h < a Then a = h
+'override position for (bracketed Phrases)
+    h = InStr(s, "(")
+    If h <> 0 And h < a Then a = h
+'override position for Slash Separated Words/phrases
+    h = InStr(s, "/")
+    If h <> 0 And h < a Then a = h
+'RE-CAPITALISE EXCEPTIONS:
+    w = Left(s, a - 1) 'first word in string
+'final master exceptions to above logic
+    w = xlU_Text_Capitalise_Words_Exceptions(w)
+    s = w & Mid(s, a, Len(s))
+'rest of phrase
+    While a > 0 And a < Len(s)
+        z = a + 1
+    'MIXED CAPITALISE REST OF STRING (w)
+        w = UCase(Mid(s, z, 1)) & Right(s, Len(s) - z)
+        s = Left(s, a) & w
+    'find next space (word) in string
+        a = InStr(z, s, " ")
+    'override position for Hyphenated-phrases
+        h = InStr(z, s, "-")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'override position for Badly Spaced,phrases
+        h = InStr(z, s, ",")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'override position for Badly Spaced.phrases
+        h = InStr(z, s, ".")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'override position for (bracketed Phrases)
+        h = InStr(z, s, "(")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'override position for (bracketed Phrases)
+        h = InStr(z, s, ")")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'override position for Slash Separated Words/phrases
+        h = InStr(z, s, "/")
+        If h <> 0 And (h < a Or a = 0) Then a = h
+    'RE-CAPITALISE EXCEPTIONS:
+        w = Mid(s, z, a - z)  'current word
+        If Len(w) = 2 Then bReCap = True
+        'short words (not many of those!)
+        If bReCap = True Then
+            s = Left(s, z - 1) & w & Mid(s, a, Len(s))
+            bReCap = False  'reset
+        End If
+    'final master exceptions to above logic
+        w = xlU_Text_Capitalise_Words_Exceptions(w)
+        s = Left(s, z - 1) & w & Mid(s, a, Len(s))
+    Wend
+    w = ""
+    a = 0
+    h = 0
+    z = 0
+'specify common overrides below
+'NB: avoid conflicts with genuine common letter pairs, e.g. SAlvation, UKraine
+    s = s & " " 'v2.04 - improves pattern matches by adding space after last char
+'common global company extensions
+    s = Replace(s, "S R L ", "SRL ")
+    s = Replace(s, "L L P ", "LLP ")
+    s = Replace(s, "S L U ", "SLU ")
+    s = Replace(s, "Sp Zoo ", "Sp Z Oo ")
+    s = Replace(s, "Co Kg ", "Co KG ")
+'other common exceptions
+    s = Replace(s, "Po Box", "PO Box")
+    s = Replace(s, "C/o", "C/O")
+    s = Replace(s, "T/a", "T/A")
+    s = Replace(s, "DE LA ", "De La ")
+    s = Replace(s, "-EN-", "-en-")  'Chapel-en-le-Frith
+    s = Replace(s, "-LE-", "-le-")  'Chapel-en-le-Frith
+    s = Replace(s, " LE ", " le ")  'Hamble le Rice
+    'If Right(s, 4) = " AB " Then s = Left(s, Len(s) - 3) & " AB"
+    'If Right(s, 4) = " SA " Then s = Left(s, Len(s) - 3) & " SA"
+    xlU_Text_Capitalise_Words = s
+End Function
+
+Function xlU_Text_Capitalise_Words_Exceptions(ByVal w As String) As String
+'v26.04 2015-03-09 17:15 - added BVBA exception
+'v26.01 2014-09-18 15:55 - bugfix
+'v26.00 2014-09-12 14:02 - added specific exceptions listed below
+'short words (not many of those! add exceptions below)
+Dim h As Integer  'v26.01
+If w = "" Then Exit Function
+    If Len(w) = 2 Then w = UCase(w)
+'alphanumerics
+    For h = 1 To Len(w)
+        If IsNumeric(Mid(w, h, 1)) Then
+            If Right(w, 3) <> "1st" And Right(w, 3) <> "2nd" And Right(w, 3) <> "3rd" And Right(w, 2) <> "th" Then
+                w = UCase(w)
+                Exit For
+            End If
+        End If
+    Next h
+'override with common 2-char words
+    If w = "CO" Then w = "Co"       'Company
+    If w = "OF" Then w = "of"
+    If w = "ON" Then w = "On"
+    If w = "IN" Then w = "in"
+    If w = "Uk" Then w = "UK"
+    If w = "ST" Then w = "St"       'Saint/Street
+    If w = "RD" Then w = "Rd"       'Road
+    If w = "MR" Then w = "Mr"       'Mister
+    If w = "DR" Then w = "Dr"       'Doctor
+    If w = "AL" Then w = "Al"       'Al Arabic
+    If w = "NO" Then w = "No"       'number
+    'If w = "3m" Then w = "3M"  'v25.04 capitalised already
+    'If w = "Ge" Then w = "GE"  'v25.04 capitalised already
+'override with common companies - make sure they don't conflict with real words
+    If w = "TEL" Then w = "Tel"
+    If w = "Fao" Then w = "FAO"
+    If w = "Dhl" Then w = "DHL"
+    If w = "Dgf" Then w = "DGF"
+    If w = "Bae" Then w = "BAE"
+    If w = "Raf" Then w = "RAF"
+    If w = "Usaf" Then w = "USAF"
+    If w = "Basf" Then w = "BASF"
+    If w = "Xyz" Then w = "XYZ"
+    If w = "Gac" Then w = "GAC"
+    If w = "Jcb" Then w = "JCB"
+    If w = "Akw" Then w = "AKW"
+    If w = "Mhh" Then w = "MHH"
+    If w = "Abb" Then w = "ABB"
+    If w = "Mjs" Then w = "MJS"
+    If w = "Tnt" Then w = "TNT"
+    If w = "Csf" Then w = "CSF"
+'common global country prefixes
+'    s = Replace(s, "Uk", "UK")  'corrects (UK), UK, Ukraine, but not Auk
+'    s = Replace(s, "UKr", "Ukr")  'fixes Ukraine and Ukr
+'    s = Replace(s, "Gb", "GB")
+'common global company extensions
+    If w = "Bp" Then w = "BP"
+    If w = "Bv" Then w = "BV"
+    If w = "Nv" Then w = "NV"
+    If w = "Ab" Then w = "AB"
+    If w = "Sa" Then w = "SA"
+    If w = "Srl" Then w = "SRL"
+    If w = "Llp" Then w = "LLP"
+    If w = "Wll" Then w = "WLL"
+    If w = "Plc" Then w = "PLC"
+    If w = "Slu" Then w = "SLU"
+    If w = "Gmbh" Then w = "GmbH"
+    If w = "Bvba" Then w = "BVBA"
+    If w = "Sarl" Then w = "SarL"
+xlU_Text_Capitalise_Words_Exceptions = w
+End Function
+
+Sub xlU_UnprotectAllSheets(Optional ByRef wb As Excel.Workbook, Optional pw As String)
+'v26.02 2014-11-10 17:06 - late binding
+'v21.00 2014-04-03 15:53 - added
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+Dim blnASU As Boolean
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim s As Byte
+For s = 1 To wb.Sheets.Count
+    wb.Sheets(s).Unprotect pw
+Next s
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Sub xlU_ProtectAllSheets(Optional ByRef wb As Excel.Workbook, Optional pw As String)
+'v26.02 2014-11-10 17:06 - late binding
+'v21.00 2014-04-03 15:53 - added
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+Dim blnASU As Boolean
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+blnASU = xl.ScreenUpdating
+xl.ScreenUpdating = False
+
+Dim s As Byte
+For s = 1 To wb.Sheets.Count
+    wb.Sheets(s).Protect pw
+Next s
+
+xl.ScreenUpdating = blnASU
+
+End Sub
+
+Sub xlU_Extract_Outlook_Emails()
+'v22.00 2014-05-13 15:38 - added
+'paste from Outlook mail into single cell, run this
+Dim es As String, eo As String, r As Excel.Range, ob As Byte, cb As Byte
+Set r = ActiveCell
+es = r.Text
+ob = InStr(es, "<") + 1
+While ob > 0 And es <> ""
+    cb = InStr(ob, es, ">")
+    eo = Mid(es, ob, cb - ob)
+    Set r = r.Offset(1)
+    r = eo
+    es = Mid(es, cb + 1, Len(es))
+    ob = InStr(es, "<") + 1
+Wend
+End Sub
+
+Sub xlU_List_Dir_Contents(Optional ByVal SpecifyPath As String)
+'v25.01 2014-08-01 14:34 - bugfix in late binding
+'v25.00 2014-07-14 13:28 - late binding
+Dim xl As Excel.Application
+If InStr(Application.Name, "Excel") Then Set xl = Application
+'v23.00 2014-05-15 15:10 - added
+'pastes filenames from specified folder into new sheet
+Const wsn As String = "xlU_List_Dir_Contents"
+Dim fn As String, ws As Excel.Worksheet, c As Integer
+If SpecifyPath = "" Then SpecifyPath = ActiveWorkbook.Path
+If Right(SpecifyPath, 1) <> "\" Then SpecifyPath = SpecifyPath & "\"
+On Error Resume Next
+xl.DisplayAlerts = False
+ActiveWorkbook.Sheets(wsn).Delete
+xl.DisplayAlerts = True
+On Error GoTo 0
+ActiveWorkbook.Sheets.Add
+Set ws = ActiveSheet
+With ws
+    .Name = wsn
+    c = 1
+    .Cells(c, 1) = .Name
+    .Cells(c, 1).Font.Bold = True
+    fn = Dir(SpecifyPath)
+    While fn <> ""
+        c = c + 1
+        .Cells(c, 1).Value = fn
+        fn = Dir
+    Wend
+End With
+End Sub
+
+Sub xlU_Range_Names_FindAndReplace(ByVal oldstring As String, ByVal newstring As String _
+    , Optional WithinWorkbook As Excel.Workbook, Optional WithinSheet As Excel.Worksheet)
+'v24.01 2014-05-21 17:27 - tweaked
+'v24.00 2014-05-21 11:04 - added
+'finds & replaces in all worksheet ranges from specified ws/wb OR all sheets in ActiveWorkbook
+
+'On Error Resume Next
+Dim wo As Object, rng As Excel.Range, rn As String, nm As Name, bDoActive As Boolean
+
+'replace throughout workbook
+If WithinWorkbook Is Nothing And WithinSheet Is Nothing Then bDoActive = True
+If bDoActive Then Set wo = ActiveWorkbook Else Set wo = WithinWorkbook
+If bDoActive Or WithinSheet Is Nothing Then
+    For Each nm In wo.Names
+        If InStr(nm.Name, oldstring) > 0 Then
+            nm.Name = Replace(nm.Name, oldstring, newstring)
+        End If
+    Next nm
+Else
+    If WithinSheet Is Nothing Then Set wo = ActiveSheet Else Set wo = WithinSheet
+    For Each nm In wo.Names
+        nm.Name = Replace(nm.Name, oldstring, newstring)
+    Next nm
+End If
+
+End Sub
+
+Sub xlU_CF_Replicate_Rows(ByRef SourceRange As Excel.Range, ByRef TargetRange As Excel.Range)
+'!! NB: transferred in from xlConditionalFormats module
+'v27.01 2015-03-17 09:47 - requires Source and Target to intersect
+'v27.00 2015-03-16 17:31 - adapted from source: http://www.ozgrid.com/forum/showthread.php?t=138066
+'"copies" Conditional Formats from SourceRange (max 1 row)
+'"pastes" Conditional Formats to TargetRange (must have same number of columns)
+'NB: Target row 1 MUST be Source range otherwise any formulas likely won't be aligned
+'NB: Source row MUST have continuous non-blank cells, use apostrophe ' to fill blanks before running
+
+    Dim i As Long
+    Dim msg As Long
+    Dim cols As Integer, c As Integer, rws As Long, r As Long, rThisCell As Excel.Range
+    
+'check that Source and Target have same number of columns
+    If SourceRange.Columns.Count <> TargetRange.Columns.Count Then
+    'Inform user
+        msg = MsgBox("SourceRange and TargetRange must have same number of columns", vbExclamation, "xlU_CF_Replicate")
+    'Bail
+        Exit Sub
+    End If
+    
+'One row in Source...
+    r = SourceRange.Rows.Count
+    If r > 1 Then
+    'Inform user
+        msg = MsgBox("Please specify a single row SourceRange", vbExclamation, "xlU_CF_Replicate")
+    'Bail
+        Exit Sub
+    End If
+    
+'warning if Source and Target.Rows(1) DON'T intersect... this will likely stop formulas from working
+On Error Resume Next
+    Set rThisCell = Intersect(SourceRange, TargetRange.Rows(1))
+    If rThisCell Is Nothing Then
+    'Inform user, ask for confirmation
+        msg = MsgBox("Source and Target should intersect.  Formulas will be misaligned.", vbQuestion Or vbOKCancel, "xlU_CF_Replicate")
+        If msg = vbCancel Then Exit Sub
+    End If
+On Error GoTo 0
+
+'determine columns in SourceRange (empty cells will change this count)
+    cols = SourceRange.Cells(1).End(xlToRight).Column
+    If cols <> SourceRange.Cells.Count Then
+    'Inform user, ask for confirmation
+        msg = MsgBox("Source range refers to empty cells.  Formats may not be copied for all columns.  (Empty columns to the right of a table will work fine.)", vbQuestion Or vbOKCancel, "xlU_CF_Replicate")
+        If msg = vbCancel Then Exit Sub
+    End If
+
+'determine rows in TargetRange
+    rws = TargetRange.Rows.Count
+    
+'NB:        (cols, i) where i = 1 to 3
+'Formulas
+    ReDim ty(cols, 3) 'Type
+    ReDim op(cols, 3) 'Operator
+    ReDim f1(cols, 3) 'Formula1
+    ReDim f2(cols, 3) 'Formula2
+'Font
+    ReDim fb(cols, 3) 'Font.Bold
+    ReDim fi(cols, 3) 'Font.Italic
+    ReDim fu(cols, 3) 'Font.Underline
+    ReDim fs(cols, 3) 'Font.Strikethrough
+    ReDim fc(cols, 3) 'Font.ColorIndex
+'Interior
+    ReDim ic(cols, 3) '.Interior.ColorIndex
+'Borders
+    ReDim bl(cols, 3) '.Borders.LineStyle
+    ReDim bw(cols, 3) '.Borders.Weight
+    ReDim bc(cols, 3) '.Borders.ColorIndex
+
+
+'===========================================================================================
+'load Conditional Formats from SourceRange
+    
+For c = 1 To cols  'for each Column in scope
+    
+    Set rThisCell = SourceRange.Columns(c)
+    With rThisCell
+        'Get up to 3 possible conditions
+        For i = 1 To 3
+        'Formulas
+On Error Resume Next
+            ty(c, i) = .FormatConditions(i).Type
+        'Handle if Conditional Format not found
+            If Err <> 0 Then GoTo LoadNextCol
+            op(c, i) = .FormatConditions(i).Operator
+            f1(c, i) = .FormatConditions(i).Formula1
+            f2(c, i) = .FormatConditions(i).Formula2
+        'Fonts
+            fb(c, i) = .FormatConditions(i).Font.Bold
+            fi(c, i) = .FormatConditions(i).Font.Italic
+            fu(c, i) = .FormatConditions(i).Font.Underline
+            fs(c, i) = .FormatConditions(i).Font.Strikethrough
+            fc(c, i) = .FormatConditions(i).Font.ColorIndex
+        'Interior
+            ic(c, i) = .FormatConditions(i).Interior.ColorIndex
+        'Borders
+            bl(c, i) = .FormatConditions(i).Borders.LineStyle
+            bw(c, i) = .FormatConditions(i).Borders.Weight
+            bc(c, i) = .FormatConditions(i).Borders.ColorIndex
+        'Reset for next
+            Err = 0
+        Next i
+    End With
+
+LoadNextCol:
+On Error GoTo 0
+Err = 0
+Next c
+'On Error GoTo 0
+
+
+'===========================================================================================
+'dump Conditional Formats onto TargetRange
+    
+'For r = 1 To rws  'for each Row in TargetRange, 1 row at a time
+    For c = 1 To cols  'for each Column in scope
+        'Set rThisCell = TargetRange.Cells(r, c)
+        Set rThisCell = TargetRange.Columns(c)
+        With rThisCell
+        'Clear old
+            .FormatConditions.Delete
+            'Do up to 3 possible conditions
+            For i = 1 To 3
+            'Formulas
+                If f1(c, i) = 0 Then
+                '0 formulas, do nothing
+                ElseIf f2(c, i) <> "" Then
+                '2 formulas
+                    If op(c, i) = 0 Then
+                        .FormatConditions.Add Type:=ty(c, i) _
+                            , Formula1:=f1(c, i) _
+                            , Formula2:=f2(c, i)
+'                        .FormatConditions.Add Type:=ty(c, i) _
+'                            , Formula1:=Replace(f1(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row) _
+'                            , Formula2:=Replace(f2(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row)
+                    Else
+                        .FormatConditions.Add Type:=ty(c, i) _
+                            , Formula1:=f1(c, i) _
+                            , Formula2:=f2(c, i) _
+                            , Operator:=op(c, i)
+'                        .FormatConditions.Add Type:=ty(c, i) _
+'                            , Formula1:=Replace(f1(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row) _
+'                            , Formula2:=Replace(f2(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row) _
+'                            , Operator:=op(c, i)
+                    End If
+                Else
+                '1 formula
+                    If op(c, i) = 0 Then
+                        .FormatConditions.Add Type:=ty(c, i) _
+                            , Formula1:=f1(c, i)
+'                        .FormatConditions.Add Type:=ty(c, i) _
+'                            , Formula1:=Replace(f1(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row)
+                    Else
+                        .FormatConditions.Add Type:=ty(c, i) _
+                            , Formula1:=f1(c, i) _
+                            , Operator:=op(c, i)
+'                        .FormatConditions.Add Type:=ty(c, i) _
+'                            , Formula1:=Replace(f1(c, i), "$" & SourceRange.Row, "$" & rThisCell.Row) _
+'                            , Operator:=op(c, i)
+                    End If
+                End If
+On Error Resume Next
+            'Fonts
+                .FormatConditions(i).Font.Bold = fb(c, i)
+                .FormatConditions(i).Font.Italic = fi(c, i)
+                .FormatConditions(i).Font.Underline = fu(c, i)
+                .FormatConditions(i).Font.Strikethrough = fs(c, i)
+                .FormatConditions(i).Font.ColorIndex = fc(c, i)
+            'Interior
+                .FormatConditions(i).Interior.ColorIndex = ic(c, i)
+            'Borders
+                .FormatConditions(i).Borders.LineStyle = bl(c, i)
+                .FormatConditions(i).Borders.Weight = bw(c, i)
+                .FormatConditions(i).Borders.ColorIndex = bc(c, i)
+On Error GoTo 0
+            'Reset for next
+                Err = 0
+            Next i
+        End With
+    Next c
+'Next r
+End Sub
+
+Sub xlU_Comments_MoveOnly(Optional ByRef ws As Excel.Worksheet)
+'v28.00 2015-09-03 12:13 - added xlU_Comments_MoveOnly
+If ws Is Nothing Then Set ws = ActiveSheet
+Dim c As Excel.Comment
+For Each c In ws.Comments
+    c.Shape.Placement = xlMove
+Next c
+End Sub
+
+Sub xlU_Add_IFERROR(Optional ByVal ErrorResultRef, Optional ByRef AddToRange As Excel.Range)
+'v30.01 2015-10-19 16:34 - speed improvements
+'v29.00 2015-10-15 09:49 - first version
+'wraps IFERROR([formula],"") around formulas in selected cells [or specified range]
+'you can specify a string (including a formula), numeric value, row or column as ErrorResultRef
+Dim iAC As Integer, xl As Excel.Application
+If Application.Name = "Microsoft Excel" Then Set xl = Application Else Exit Sub
+iAC = xl.Calculation
+xl.Calculation = xlCalculationManual
+If AddToRange Is Nothing Then Set AddToRange = Selection
+Dim r As Excel.Range, s As String
+For Each r In AddToRange.Cells
+    s = r.Formula
+    If Left(s, 1) = "=" And Left(s, 8) <> "=IFERROR" Then
+        s = Mid(s, 2, Len(s))
+        s = "=IFERROR(" & Chr(10) & s & "," & Chr(10) & ErrorResultRef & ")"
+        r.Formula = s
+    End If
+Next r
+xl.Calculation = iAC
+End Sub
+
+Sub xlU_Replace_In_Formulas(ByVal sOldText As String, ByVal sNewText As String _
+    , Optional ByRef DoInRange As Excel.Range)
+'v30.00 2015-10-19 16:34 - first version
+'NOT case sensitive, because Option Compare Text is at the top of this module
+'if you DO want this to be case sensitive, copy into another module
+Dim iAC As Integer, xl As Excel.Application
+If Application.Name = "Microsoft Excel" Then Set xl = Application Else Exit Sub
+iAC = xl.Calculation
+xl.Calculation = xlCalculationManual
+If DoInRange Is Nothing Then Set DoInRange = Selection
+Dim r As Excel.Range, s As String
+For Each r In DoInRange.Cells
+    s = r.Formula
+    If Left(s, 1) = "=" Then
+        s = Replace(s, sOldText, sNewText)
+        If s <> r.Text Then r.Formula = s
+    End If
+Next r
+xl.Calculation = iAC
+End Sub
+
+Function xlU_IsExcelRunning(Optional bDisplayMsg As Boolean) As Integer
+'v33.00 2017-05-04 17:00 - added xlU_IsExcelRunning
+'source: http://www.ozgrid.com/forum/showthread.php?t=84115&p=414448#post414448
+Dim strComputer As String, objWMI As Object, proc As Object
+    strComputer = "."
+    Set objWMI = GetObject("winmgmts:" _
+    & "{impersonationLevel=impersonate}!\\" & strComputer & "\root\cimv2")
+    Set proc = objWMI.ExecQuery _
+    ("Select * from Win32_Process Where Name = 'Excel.exe'")
+    If bDisplayMsg Then
+        If proc.Count = 0 Then
+            MsgBox "Excel.exe is not running."
+        Else
+            MsgBox proc.Count & " instances of Excel.exe is running."
+        End If
+    End If
+xlU_IsExcelRunning = proc.Count
+End Function
+
+Function xlU_Clean_Name_Errors(Optional ByVal bShowMsgBox As Boolean = True _
+    , Optional ByVal bDeleteErrors As Boolean = True _
+    , Optional ByVal bDeleteExternal As Boolean = True) As Integer
+'v34.00 2017-08-01 09:23 - added xlU_Clean_Name_Errors
+
+Dim nm As Name, i As Integer, j As Integer, pp As String
+
+If bDeleteErrors = False And bDeleteExternal = False Then
+    pp = "All types of names to be removed were set False"
+    MsgBox pp, vbExclamation, ""
+    Exit Function
+End If
+
+For Each nm In ThisWorkbook.Names
+    If bDeleteErrors And Left(nm.RefersTo, 6) = "=#REF!" Then
+        nm.Delete
+        i = i + 1
+    ElseIf bDeleteExternal And Left(nm.RefersTo, 3) = "C:\" Then
+        nm.Delete
+        j = j + 1
+    ElseIf bDeleteExternal And Left(nm.RefersTo, 2) = "\\" Then
+        nm.Delete
+        j = j + 1
+    End If
+Next nm
+xlU_Clean_Name_Errors = i + j
+If i > 0 And bDeleteErrors Then pp = "Removed " & i & " names with #REF! errors" & vbLf
+If j > 0 And bDeleteExternal Then pp = pp & "Removed " & j & " names with external local/network workbook references" & vbLf
+If i = 0 And j = 0 Then pp = "No names to remove"
+If bShowMsgBox Then MsgBox pp, vbInformation, ""
+End Function
+
+Function get_MySQLDriverName() As String
+'v35.00 2018-01-11 09:00 - added
+'http://www.vbforums.com/showthread.php?628616-Using-Excel-VBA-to-identify-installed-ODBC-driver
+Const HKEY_LOCAL_MACHINE = &H80000002
+'strComputer = "."
+Dim oreg As Object
+Set oreg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")
+'strKeyPath =
+Dim regstr, arr, rval
+oreg.enumvalues HKEY_LOCAL_MACHINE, "SOFTWARE\ODBC\ODBCINST.INI\ODBC Drivers", regstr, arr
+For Each rval In regstr
+    If InStr(1, rval, "mysql", vbTextCompare) > 0 Then
+        get_MySQLDriverName = rval
+        Exit For
+    End If
+Next
+Set oreg = Nothing
+End Function
+
+Function xlU_Save_Chart_As_Image(ByVal ChartNumber As String) As String
+'v37.02 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v36.02 2019-01-08 19:03 - xlU_Save_Chart_As_Image: moved to temp folder, except pcinsightvm
+'v36.01 2019-01-08 10:36 - xlU_Save_Chart_As_Image: moved to M: drive
+'v36.00 2019-01-02 12:13 - added xlU_Save_Chart_As_Image
+
+On Error GoTo OhNoAbandonShip
+Dim xl As Excel.Application
+If Application.Name = "Microsoft Excel" Then Set xl = Application Else Exit Function
+
+Dim dd As String, pth As String, fn As String
+dd = Format(Now - Weekday(Now, vbMonday) + 1, "yyyy-mm-dd") 'MONDAY!
+
+If InStr(sAutomationUser, Environ("Username")) > 0 Then
+    pth = "\\company.local\Group Data\Automation\Testing\Chart Images\"
+Else
+    pth = Environ("temp") & "\"
+End If
+fn = "Charts " & dd & " "
+xlU_Save_Chart_As_Image = pth & fn & " " & ChartNumber & ".gif"
+
+xl.ActiveWorkbook.Sheets("EMAIL CHARTS").ChartObjects("Chart " & ChartNumber).Chart.Export FileName:=xlU_Save_Chart_As_Image, FilterName:="gif"
+Exit Function
+OhNoAbandonShip:
+End Function
+
+Sub xlU_Remind_User(Optional ByVal BypassMessageBox As Boolean = True, Optional AutoCloseAndSave As Boolean = True)
+'v37.02 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v37.00 2019-01-16 14:24 - xlU_Remind_User: copied from DMX
+'useful for automatically closing unshared workbooks that need to be edited by multiple people
+'will reset 5 minute timer if run without ShowMessageBox (do this on Worksheet_SelectionChange event)
+'will close & save if AutoCloseAndSave is NOT False
+Const iEveryFewMinutes = 5
+If InStr(ThisWorkbook.Name, "(master)") = 0 And InStr(sAutomationUser, Environ("Username")) = 0 Then
+On Error Resume Next
+    If RunWhen <> 0 Then Application.OnTime RunWhen, "xlU_Remind_User", Schedule:=False  'cancel existing OnTime
+On Error GoTo 0
+    If AutoCloseAndSave Then
+        Application.StatusBar = False
+        If InStr(Application.Caption, "read-only") > 0 Then
+            ThisWorkbook.Close False
+        Else
+            ThisWorkbook.Close True
+        End If
+    End If
+    If BypassMessageBox Then
+        If InStr(Application.Caption, "read-only") > 0 Then
+            Exit Sub
+        Else
+            Application.StatusBar = "WARNING: " & ThisWorkbook.Name & " will close & save automatically at " & Format(RunWhen, "hh:nn:ss")
+        End If
+    Else
+        MsgBox "Reminder: don't leave report open while you're not using it.  Save and close when done, otherwise we can't update it overnight.", vbInformation, ""
+        Application.StatusBar = "WARNING: " & ThisWorkbook.Name & " will close & save automatically at " & Format(RunWhen, "hh:nn:ss")
+    End If
+    RunWhen = Now + TimeSerial(0, iEveryFewMinutes, 0)
+    Application.OnTime RunWhen, "xlU_Remind_User", Schedule:=True
+End If
+End Sub
+
+Sub xlU_Remove_Read_Only()
+'v37.02 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v32.03 2017-01-20 12:04 - bugfix to fix file access delays
+'v32.01 2017-01-05 15:55 - allows automation on VM
+'v32.00 2017-01-05 10:44 - added
+On Error GoTo ErrorHandler
+Dim bBypassMsgBox As Boolean, xl As Excel.Application
+If Application.Name = "Microsoft Excel" Then Set xl = Application Else Exit Sub
+If InStr(sAutomationUser, Environ("Username")) > 0 Then bBypassMsgBox = True
+If InStr(Application.Caption, "read-only") = 0 Then
+    If bBypassMsgBox = False Then MsgBox "Already writeable", vbInformation, ""
+Else
+    SetAttr ThisWorkbook.FullName, vbNormal
+    xl.Wait Now + TimeSerial(0, 0, 2)
+    ThisWorkbook.ChangeFileAccess xlReadWrite
+End If
+Exit Sub
+ErrorHandler:
+    If bBypassMsgBox = False Then MsgBox "Couldn't make writeable, try manually, check for file locks", vbExclamation, ""
+End Sub
+
+Sub xlU_Save_Make_Read_Only_And_Close()
+'v37.02 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v32.06 2017-03-06 10:32 - change to msgbox, easier to understand what's going on
+'v32.02 2017-01-20 11:36 - bugfix when saving to temp, kill first
+'v32.01 2017-01-05 15:55 - allows automation on VM
+'v32.00 2017-01-05 10:44 - added
+Dim bBypassMsgBox As Boolean
+If InStr(sAutomationUser, Environ("Username")) > 0 Then bBypassMsgBox = True
+If bBypassMsgBox = False Then
+    If MsgBox("WARNING: file will be saved and closed and made read-only." & vbLf & vbLf & "Click YES to CANCEL", vbYesNo Or vbQuestion, "") = vbYes Then Exit Sub
+End If
+Dim sThisPath As String
+sThisPath = ThisWorkbook.FullName
+On Error GoTo ErrorHandler
+If InStr(Application.Caption, "read-only") > 0 Then
+    If bBypassMsgBox = False Then MsgBox "Already read-only", vbInformation, ""
+ElseIf Right(sThisPath, 5) <> ".xlsb" Then
+    If bBypassMsgBox = False Then MsgBox "Only works with XLSB files", vbExclamation, ""
+Else
+    If Dir(Environ("Temp") & "\test.xlsb") <> "" Then Kill Environ("Temp") & "\test.xlsb"
+    ThisWorkbook.Save
+    'save to temp so we can work on previous file
+    ThisWorkbook.SaveAs Environ("Temp") & "\test.xlsb"
+    SetAttr sThisPath, vbReadOnly
+    ThisWorkbook.Close False
+End If
+Exit Sub
+ErrorHandler:
+    If bBypassMsgBox = False Then MsgBox "Couldn't make writeable, try manually, check for file locks", vbExclamation, ""
+End Sub

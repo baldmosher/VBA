@@ -1,0 +1,60 @@
+Attribute VB_Name = "modRecursiveFolders"
+Option Explicit
+
+Sub RecursiveFolders_Control()
+
+'//not fully tested -- need to get this to work properly with files containing more than 1 day (sDate)
+
+    '//processes files from selected folder
+    '//move any files needing processing into "Unprocessed" folder
+    
+    Call RecursiveFolders("\\company.local\rcfs\P&C\RT\PC Insight Reports\3 Other\Google Analytics\raw data\Unprocessed")
+End Sub
+
+Sub RecursiveFolders(ByVal MyPath As String)
+
+    Dim FileSys As Object
+    Dim objFolder As Object
+    Dim objSubFolder As Object
+    Dim objFile As Object
+    Dim wkbOpen As Workbook
+    Dim i As Integer
+    Dim ExcelApp As Excel.Application
+    
+    
+    Set FileSys = CreateObject("Scripting.FileSystemObject")
+    Set objFolder = FileSys.GetFolder(MyPath)
+
+i = 0
+  
+    
+    'For Each objSubFolder In objFolder.SubFolders '//uncomment this line and Next to get subfolders processed
+        For Each objFile In objFolder.Files
+        Set ExcelApp = modAppsOffice.run_Excel("", "", , False, True)
+          Application.ScreenUpdating = False
+            Set wkbOpen = Workbooks.Open(filename:=objFile)
+            
+            '//Change the name of your macro, accordingly
+            Call ADOUpdateSQLTableFromExcel(objFile)
+      
+            'wkbOpen.SaveAs filename:=objFile.Name
+            
+            wkbOpen.Close SaveChanges:=False
+            
+           
+              i = i + 1
+        Next
+        Call RecursiveFolders(objSubFolder.Path)
+    'Next
+    
+    If i > 0 Then
+    MsgBox "Finished!"
+    Else
+    MsgBox "Error?"
+    End If
+ 
+        ExcelApp.Workbooks(1).Saved = True
+           ExcelApp.Quit
+           Set ExcelApp = Nothing
+    Application.ScreenUpdating = True
+End Sub

@@ -1,0 +1,1415 @@
+Attribute VB_Name = "xlVBAUpdater"
+Option Explicit
+Option Compare Text
+
+'Version History:
+Public Const xlVBAUpdaterCodeVer As String = _
+"xlVBAUpdater v7.07"
+'v7.07 2020-10-16 11:15 - ScanAndReplaceVBAModules: added DoBypassVBA option to just scan folder for master files
+'v7.06 2019-10-23 16:18 - ScanAndReplaceVBAModules: bugfix for random filename beginning with "."
+'v7.05 2019-03-26 14:10 - fn_Check_VM: added VM1 and VM2
+'v7.04 2019-03-26 12:50 - ScanAndReplaceVBAModules: auto-archives the master file if it's not updated in 4 months
+'v7.03 2019-03-26 12:35 - fn_Check_AC: changed code to delete the sheet, it's no longer required
+'v7.02 2019-01-10 17:53 - ReplaceAdminPaths: moved Company to Group Data
+'v7.01 2019-01-08 10:20 - ReplaceDataConnectionPaths: changed code to new Group Data share
+'                       - fn_Check_ODC: changed code to new Group Data share
+'                       - fn_Check_AC: changed code to new Group Data share
+'                       - ReplaceAdminPaths: allows to change paths from old to new shares
+'NOTE: need to update ReplaceLinkedWorkbookPaths once P&C share moves
+'v6.09 2018-05-18 18:58 - test_change_connections_to_BI01
+'v6.08 2018-05-18 17:21 - fn_Check_VM: checks for the last published VM
+'v6.07 2018-05-18 17:05 - fn_Check_Svr: bugfix, ignore ODC files, produces false positives
+'v6.06 2018-05-18 16:49 - fn_Check_ODC: bugfix, don't refresh as BackgroundQuery
+'v6.05 2018-05-18 15:21 - ScanAndReplaceVBAModules: minor tweaks to Hyperlinks.Add and added iSize
+'v6.04 2018-05-18 13:11 - fn_Check_AC: points to new @Access_Control.odc file
+'v6.03 2018-05-18 12:42 - fn_Check_ODC: refreshes .ODC files to ensure they bring in the current connection details
+'v6.02 2018-05-18 11:30 - fn_Check_Svr: bugfix, didn't work, produced false positives
+'v6.01 2018-05-08 16:09 - fn_Check_MySQL: added errorhandler for PP read-only connections
+'v6.00 2018-05-08 14:26 - fn_Check_MySQL: switches old username for new username in MySQL connections
+'v5.02 2018-04-18 18:23 - ScanAndReplaceVBAModules: fn_Check_AC: changed process
+'                       - fn_Check_AC: bugfix, checks .ODC file in use, doesn't swap if it is, does if it's not
+'v5.01 2018-04-18 11:01 - ReplaceDataConnectionPaths: changed Debug.Print message
+'v5.00 2018-04-17 13:28 - fn_Check_Svr: checks for Server names in Connections in target
+'v4.09 2018-03-27 15:39 - fn_Check_AC: bugfix, prevents warnings when replacing sheet; improved error handler
+'v4.08 2018-03-27 15:18 - fn_Check_ODC: checks for ODC files in target
+'v4.07 2018-03-27 14:55 - fn_Check_AC: bugfix, prevents deleting original sheet from master file
+'                       - bugfix: better to use Y: paths for .odc files in case they move
+'v4.06 2018-03-27 13:17 - fn_Check_AC: optionally replaces Access Control sheet in target to ensure current version is in use
+'v4.05 2018-03-26 22:58 - bugfix to v4.05, changed Sheet to Worksheet
+'v4.04 2018-03-26 22:02 - bugfix, wasn't doing Find & Replace
+'v4.03 2018-03-26 21:50 - bugfix for v4.02, process order change to capture changes to paths
+'v4.02 2018-03-26 21:40 - bugfix for v3.35, extra slash in sPathYDrive
+'v4.01 2018-03-26 21:27 - ReplaceLinkedWorkbookPaths: replaces paths in Linked Workbooks
+'v4.00 2018-03-26 15:21 - ReplaceDataConnectionPaths: replaces paths in Data Connections
+'v3.35 2018-03-26 14:04 - added sPathYDrive
+'v3.34 2017-12-21 17:38 - added admin_MasterPath and cMst
+'v3.33 2017-11-14 13:21 - ScanAndReplaceVBAModules: logs testing/working folder
+'v3.32 2017-11-14 11:50 - fn_Check_AC: checks Access Control in target
+'v3.31 2017-09-08 16:38 - fixed issue with corrupt workbooks, now it drops out if it happens
+'v3.30 2017-08-04 14:32 - minor tweak to comments, resets sFil each time
+'v3.29 2017-08-04 13:56 - ScanAndReplaceVBAModules: marks output file as "n/a" if n/a
+'v3.28 2017-08-03 16:44 - added dOldTime to restore read-only datestamps
+'v3.27 2017-08-03 09:58 - better control of checking version numbers, better on screen messages
+'v3.26 2017-08-02 17:00 - bugfix, direct reference to rFileList cells for versions
+'v3.25 2017-08-02 16:47 - bugfix, if master version differs from recorded list, it updates the module
+'v3.24 2017-08-02 10:34 - ReplaceOneModule: bugfixes around adding missing admin sheets; better error handling
+'v3.23 2017-08-01 17:19 - auto-saves new test version
+'v3.22 2017-07-31 10:09 - bugfix when copying sheets with existing range names, Application.DisplayAlerts = False
+'v3.21 2017-07-25 16:47 - fn_Check_PP: bugfix, didn't work
+'v3.20 2017-07-05 16:43 - records datestamp as 2099-12-31 to show when it failed last time and bypass it
+'                       - no longer activates, seems to cause issues with some workbooks
+'v3.19 2017-07-03 15:22 - improved error handling on read-only workbooks
+'v3.18 2017-07-03 15:09 - ScanAndReplaceVBAModules: minor tweaks to Application settings code
+'v3.17 2017-06-30 12:59 - checks for PP/PT/QT in target
+'v3.16 2017-06-22 13:46 - adds hyperlinks for new files
+'v3.15 2017-06-22 12:12 - always deletes specified modules
+'v3.14 2017-06-06 10:56 - added cPub to record last published date
+'v3.13 2017-06-06 10:33 - removed xlUtils binding, copied xlU_SheetExists function to this module
+'v3.12 2017-06-06 10:22 - various very minor code improvements
+'v3.11 2017-05-08 14:07 - switched remaining Offset(0, 1) refs to use cUpd
+'v3.10 2017-05-08 13:31 - added "closed read-only" comment to Update cell instead of filename cell
+'v3.09 2017-05-05 16:36 - records current Test Version number from ChangeLog sheet, adds comment to say whether saved or not
+'v3.08 2017-05-05 14:43 - added bAlwaysX test, errorhandlers for set oModule
+'v3.07 2017-05-05 11:15 - added safety net for missing mandatory modules (in case deleted in error and master was saved)
+'v3.06 2017-05-04 16:21 - renamed uos to cUpd, added cVer, added cMod, and rejigged offsets
+'v3.05 2017-05-04 14:31 - renamed boolean
+'v3.04 2017-05-02 16:55 - bugfix in version number, prevents failure when _module is still there
+'v3.03 2017-02-24 18:50 - bugfix in missing version number when adding new module
+'                       - adds mandatory modules if missing
+'v3.02 2017-02-03 13:09 - commented errorhandler for removing _OLD module.  This does work but only after the macro ends.
+'v3.01 2017-02-03 11:59 - used uos as Const to fix offsets, only updates module if it doesn't match (ideally want to switch this to earlier in the process to avoid opening files unnecessarily)
+'v3.00 2017-01-25 11:31 - added code from http://stackoverflow.com/questions/19800184/vbcomponents-remove-doesnt-always-remove-module
+'v2.03 2017-01-24 13:03 - reverted back, doesn't use external xlApp object as it's causing issues
+'v2.02 2017-01-23 16:57 - bugfix for NA Domestic reports
+'v2.01 2017-01-16 14:07 - uses external xlApp object, adds comment on failure, deletes comment on success
+'v2.00 2016-11-01 12:13 - added ReplaceOneModule: rebuild to allow easier self-updates
+'v1.06 2016-11-01 11:51 - increased max file size to cover KPI PP report
+'v1.05 2016-09-20 15:45 - bugfix
+'v1.04 2016-09-16 13:32 - only add admin sheets if modAuto is in the file
+'v1.03 2016-08-30 13:11 - checks if mandatory admin sheets are present
+'v1.02 2016-08-30 12:05 - added sheet refs for Ranges, added mmax, changed cMaxFileSize to Private Const
+'v1.01 2016-05-11 09:34 - make open wbTarget active
+'v1.00 2016-05-03 17:30 - first working version
+
+Private Const sPathYDrive As String = "\\company.local\Group Data\P&C\"
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+Private ModuleName() As String
+Private Const cMaxFileSize As Long = 500000000  '500MB
+Private bReplacedModule As Boolean
+Private cUpd As Byte, cPub As Byte, cVer As Byte, cMst As Byte, cTst As Byte, cOut As Byte, cMod As Byte, cCMB As Byte, cCPP As Byte, cCPT As Byte, cCQT As Byte, cCVM As Byte, cCAC As Byte, cCOD As Byte, cCMy As Byte, cSvr As Byte
+Private GenericModuleVersion() As String, ReportModuleVersion() As String
+
+Public Function xlVBAUpdaterVer() As String
+'note: this doesn't work when replacing the module, so it's excluded from the module update list
+xlVBAUpdaterVer = xlVBAUpdaterCodeVer
+End Function
+
+Sub ScanAndReplaceVBAModules(ByRef DoAllMasters As Boolean, Optional DoOnlyThisWorkbook As Boolean, Optional DoBypassVBA As Boolean)
+'v7.07 2020-10-16 11:15 - ScanAndReplaceVBAModules: added DoBypassVBA option to just scan folder for master files
+'v7.06 2019-10-23 16:18 - ScanAndReplaceVBAModules: bugfix for random filename beginning with "."
+'v7.04 2019-03-26 12:50 - ScanAndReplaceVBAModules: auto-archives the master file if it's not updated in 4 months
+'v6.08 2018-05-18 17:21 - fn_Check_VM: checks for the last published VM
+'v6.05 2018-05-18 15:21 - ScanAndReplaceVBAModules: minor tweaks to Hyperlinks.Add and added iSize
+'v6.00 2018-05-08 14:26 - added fn_Check_MySQL
+'v5.02 2018-04-18 18:23 - fn_Check_AC: changed process
+'v5.00 2018-04-17 13:28 - fn_Check_Svr: checks for Server names in Connections in target
+'v4.08 2018-03-27 15:18 - fn_Check_ODC: checks for ODC files in target
+'v4.05 2018-03-26 22:58 - bugfix to v4.05, changed Sheet to Worksheet
+'v4.04 2018-03-26 22:02 - bugfix, wasn't doing Find & Replace, now unhides all sheets in wbTarget
+'v4.01 2018-03-26 21:27 - replaces paths in Linked Workbooks
+'v4.00 2018-03-26 15:21 - replaces paths in Data Connections
+'v3.34 2017-12-21 17:38 - added admin_MasterPath and cMst
+'v3.33 2017-11-14 13:21 - logs testing/working folder
+'v3.31 2017-09-08 16:38 - fixed issue with corrupt workbooks, now it drops out if it happens
+'v3.30 2017-08-04 14:32 - minor tweak to comments, resets sFil each time
+'v3.29 2017-08-04 13:56 - marks output file as "n/a" if n/a
+'v3.28 2017-08-03 16:44 - added dOldTime to restore read-only datestamps
+'v3.23 2017-08-01 17:19 - auto-saves new test version
+'v3.20 2017-07-05 16:43 - records datestamp as 2099-12-31 to show when it failed last time and bypass it
+'                       - no longer activates, seems to cause issues with some workbooks
+'v3.19 2017-07-03 15:22 - improved error handling on read-only workbooks
+'v3.18 2017-07-03 15:09 - minor tweaks to Application settings code
+'v3.17 2017-06-30 12:59 - checks for PP/PT/QT in target
+'v3.16 2017-06-22 13:46 - adds hyperlinks for new files
+'v3.14 2017-06-06 10:56 - added cPub to record last published date
+'v3.13 2017-06-06 10:33 - removed xlUtils binding, copied xlU_SheetExists function to this module
+'v3.11 2017-05-08 14:07 - switched remaining Offset(0, 1) refs to use cUpd
+'v3.10 2017-05-08 13:31 - added "closed read-only" comment to Update cell instead of filename cell
+'v3.09 2017-05-05 16:36 - records current Test Version number from ChangeLog sheet, adds comment to say whether saved or not
+'v3.06 2017-05-04 16:21 - renamed uos to cUpd, added cVer, added cMod, and rejigged offsets
+'v3.05 2017-05-04 14:31 - renamed boolean
+'v2.03 2017-01-24 13:03 - reverted back, doesn't use external xlApp object as it's causing issues
+'v2.01 2017-01-16 14:07 - uses external xlApp object, adds comment on failure, deletes comment on success
+'v1.06 2016-12-16 15:03 - logs current module versions from Generic Sheets modules in row 1
+'v1.05 2016-09-20 15:45 - bugfix
+'v1.02 2016-08-30 12:05 - added sheet refs for Ranges, added mmax, changed cMaxFileSize to Private Const
+'v1.01 2016-05-11 09:34 - make open wbTarget active
+'v1.00 2016-05-03 17:30 - first version
+
+'this allows us to Debug > Compile before closing wbTarget
+'doesn't work after Skype update
+'Dim objVBECommandBar As Object, compileMe As Variant
+'Set objVBECommandBar = Application.VBE.CommandBars
+
+    Dim ModulePath As String, PathToFiles As String
+    ModulePath = updVBA_Settings.Range("admin_PathModules")
+    PathToFiles = updVBA_Settings.Range("admin_PathMasters")
+    
+    Dim rModuleList As Range, m As Byte, mmax As Byte
+    'first to last cell showing what to check & update
+    Set rModuleList = updVBA_Files.Range("admin_Modules")
+    Set rModuleList = updVBA_Files.Range(rModuleList, rModuleList.End(xlToRight))
+On Error GoTo ErrorTooManyModules
+    mmax = rModuleList.Cells.Count  'max 255
+On Error GoTo 0
+    ReDim ModuleName(1 To mmax) As String
+    For m = 1 To mmax
+        ModuleName(m) = rModuleList.Cells(m)
+    Next m
+    ReDim GenericModuleVersion(1 To mmax) As String   'either version number or X or ""
+    ReDim ReportModuleVersion(1 To mmax) As String   'either version number or X or ""
+    
+    
+    cMst = updVBA_Files.Range("admin_MasterPath").Column    'this is added with each new file
+    cUpd = updVBA_Files.Range("admin_Updated").Column
+    cPub = updVBA_Files.Range("admin_Published").Column
+    cVer = updVBA_Files.Range("admin_TestVer").Column
+    cTst = updVBA_Files.Range("admin_TestPath").Column
+    cOut = updVBA_Files.Range("admin_Output").Column
+    cCMB = updVBA_Files.Range("admin_CheckMB").Column
+    cCPP = updVBA_Files.Range("admin_CheckPP").Column
+    cCPT = updVBA_Files.Range("admin_CheckPT").Column
+    cCQT = updVBA_Files.Range("admin_CheckQT").Column
+    cCVM = updVBA_Files.Range("admin_CheckVM").Column
+    cCAC = updVBA_Files.Range("admin_CheckAC").Column
+    cCOD = updVBA_Files.Range("admin_CheckODC").Column
+    cCMy = updVBA_Files.Range("admin_CheckMySQL").Column
+    cSvr = updVBA_Files.Range("admin_CheckServer1").Column  'following columns are admin_CheckServer2, 3, etc.
+    cMod = updVBA_Files.Range("admin_Modules").Column
+    
+    Dim rFileList As Range, f As Integer
+    Set rFileList = updVBA_Files.Range("admin_Files")
+    'If rFileList.Offset(1) <> "Dummy Row - Don't Delete This" Then GoTo ErrorNoDummyInFileList
+    Set rFileList = updVBA_Files.Range(rFileList.Offset(1), rFileList.End(xlDown))
+
+
+    Dim lngFileCounter As Long, wbTarget As Workbook
+    Dim dFileSizeBytes As Double
+
+    Dim iSize As Integer    'file size
+    
+    Dim iAC As Integer, bAEE As Boolean, bACBS As Boolean, bADA As Boolean
+    With Application
+    iAC = .Calculation
+        .Calculation = xlCalculationManual
+    bAEE = .EnableEvents
+        .EnableEvents = False
+    bACBS = .CalculateBeforeSave
+        .CalculateBeforeSave = False
+    bADA = .DisplayAlerts
+        .DisplayAlerts = False
+    End With
+    
+    
+    'Dim XLapp As Excel.Application
+    
+    Dim sPath As String
+    Dim sFil As String
+    Dim sTgtPth As String   'by default, this is the listed master file
+    'Dim sVersionResult As String
+    'Dim oModule As Object
+    Dim bSaveTarget As Boolean
+    Dim w As Byte
+    Dim sv As Byte  'counts servers to be checked in Connection strings
+    
+    sPath = PathToFiles
+    
+    'Search for files in list to check they are still present
+    
+    For f = 2 To rFileList.Cells.Count
+        If rFileList.Cells(f).EntireRow.Cells(cUpd) < DateValue("2099-12-31") Then
+            sFil = ""
+        On Error Resume Next
+            sFil = Dir(sPath & rFileList.Cells(f))
+        On Error GoTo 0
+            If sFil = "" Then
+            'file not found
+                rFileList.Cells(f).Interior.Color = 12040422  'pink
+                On Error Resume Next
+                    rFileList.Cells(f).Hyperlinks.Delete
+                    rFileList.Cells(f).Comment.Delete
+                On Error GoTo 0
+                rFileList.Cells(f).AddComment "COULD NOT FIND FILE " & Now
+                rFileList.Cells(f).Font.ColorIndex = -4105
+                rFileList.Cells(f).Font.Bold = True
+            Else
+            'file found
+                On Error Resume Next
+                    rFileList.Cells(f).Hyperlinks.Delete
+                    rFileList.Cells(f).Comment.Delete
+                On Error GoTo 0
+                'rFileList.Cells(f).Hyperlinks.Add rFileList.Cells(f), sPath & rFileList.Cells(f)
+                rFileList.Cells(f).Interior.ColorIndex = 0
+                rFileList.Cells(f).Font.Bold = False
+            End If
+        End If
+    Next f
+
+    'Search for files in folder that we want to replace code module
+    If DoAllMasters Then
+        sFil = Dir(sPath & "*.xlsb")
+    ElseIf DoOnlyThisWorkbook Then
+        w = w + 1
+        sFil = ThisWorkbook.Name
+    Else
+        w = w + 1
+        sFil = Workbooks(w).Name
+    End If
+    
+    Dim MyObj As Object, MySource As Object, MyFile As Variant
+    Set MyObj = New FileSystemObject
+    Set MySource = MyObj.GetFolder(sPath)
+    For Each MyFile In MySource.Files
+        sFil = MyFile.Name
+        If Right(sFil, 5) <> ".xlsb" Then GoTo NextFile
+        If Left(sFil, 1) = "." Then GoTo NextFile  'exception rule for "._Trading Summary by Supplier (master).xlsb"
+        
+        If DoAllMasters Then
+            sTgtPth = sPath & sFil  'this file
+            dFileSizeBytes = 0
+            dFileSizeBytes = FileLen(sTgtPth)
+            If dFileSizeBytes > cMaxFileSize Then GoTo ErrorFileTooBig
+            If Left(sFil, 2) = "~$" Then GoTo NextFile  'temp files are out of scope
+        Else
+            If Workbooks(w).Name = "PERSONAL.xlsb" Then GoTo NextFile
+            If Workbooks(w).Name = ThisWorkbook.Name And DoOnlyThisWorkbook = False Then GoTo NextFile
+            sFil = Workbooks(w).Name
+            sTgtPth = Workbooks(w).FullName
+        End If
+        
+        On Error Resume Next
+FindFileInList:
+        f = 0
+        f = Application.Match(sFil, rFileList, 0)
+        If f = 0 Then
+        'new file, add it to the bottom of the list, and extend the list by 1
+            With rFileList.Cells(rFileList.Cells.Count).Offset(1)
+                .Value = sFil
+                '.Hyperlinks.Add .Cells(1), sPath & sFil
+                .Font.Bold = False
+                .EntireRow.Cells(cMst).Value = sPath & sFil
+                .EntireRow.Cells(cMst).Hyperlinks.Add .EntireRow.Cells(cMst), .EntireRow.Cells(cMst).Value
+            End With
+            Set rFileList = updVBA_Files.Range(rFileList.Cells(1), rFileList.End(xlDown))
+            GoTo FindFileInList
+        End If
+        If DoAllMasters Then
+        'is it recently updated?
+            If rFileList.Cells(f).EntireRow.Cells(cUpd) >= updVBA_Settings.Range("admin_UpdateBefore") Then
+                Debug.Print "Bypassed " & sFil & ", already updated after max date"
+            On Error Resume Next
+                rFileList.Cells(f).Comment.Delete
+            On Error GoTo 0
+                'rFileList.Cells(f).AddComment "Bypassed " & sFil & ", already updated after max date"
+                GoTo NextFile
+            End If
+        'does file not exist?
+            If dFileSizeBytes = 0 Then
+                Debug.Print "Bypassed " & sFil & ", file not found at " & sTgtPth
+            On Error Resume Next
+                rFileList.Cells(f).Comment.Delete
+            On Error GoTo 0
+                rFileList.Cells(f).AddComment "Bypassed " & sFil & ", file not found at " & sTgtPth
+                rFileList.Cells(f).EntireRow.Cells(cUpd) = "not found"
+                GoTo NextFile
+            End If
+        End If
+        On Error GoTo 0
+        
+        bSaveTarget = False   'resets boolean for this f
+    
+    'if we are not updating modules, and just re-scanning files...
+        If DoBypassVBA Then GoTo NextFile
+        
+    '..otherwise, open the workbook
+        Dim dOldTime As Double
+        Application.EnableEvents = False
+        Application.CalculateBeforeSave = False
+        Application.Calculation = xlCalculationManual
+        Application.DisplayAlerts = False
+        If DoAllMasters Then
+            Application.StatusBar = "Opening: " & sTgtPth
+            Debug.Print "Opening " & sTgtPth
+            dOldTime = rFileList.Cells(f).EntireRow.Cells(cUpd).Value
+            rFileList.Cells(f).EntireRow.Cells(cUpd).Value = DateValue("2099-12-31")     'mark it to be ignored next time if it totally fails
+            ThisWorkbook.Save
+            Set wbTarget = Workbooks.Open(sTgtPth, False, False)
+        Else
+            Set wbTarget = Workbooks(w)
+            Debug.Print "Processing open workbook in this Excel session: " & wbTarget.Name
+        End If
+        'If Not wbTarget Is Nothing Then wbTarget.Activate
+        
+    'show *all* sheets in Target file
+        Dim ws As Worksheet
+        For Each ws In wbTarget.Worksheets
+            ws.Visible = xlSheetVisible
+        Next ws
+    
+    'record the last published timestamp
+        Dim dPub As Double
+        If Not wbTarget Is Nothing Then
+        On Error Resume Next
+            dPub = 0
+            dPub = wbTarget.Sheets("admin").Range("admin_UpdatedTime").End(xlDown)
+        On Error GoTo 0
+            rFileList.Cells(f).EntireRow.Cells(cPub).Value = dPub
+        'v7.04: archive the master file if the last update is more than 4 months ago
+            Const MaxDays As Byte = 120
+            If dPub < (Now() - MaxDays) Then
+                wbTarget.SaveAs Replace(wbTarget.FullName, "Masters\", "Masters\Disabled\")
+                wbTarget.Close False
+            On Error Resume Next
+                Set wbTarget = Nothing
+                Set wbTarget = Workbooks(Replace(sTgtPth, "Masters\", "Masters\Disabled\")) 'new path if not closed correctly
+                Set wbTarget = Workbooks(sTgtPth)   'old path if not saved correctly before closing
+            On Error GoTo 0
+                If Not wbTarget Is Nothing Then GoTo ErrorStillOpen
+            On Error Resume Next
+                Kill sTgtPth
+                If Dir(sTgtPth) <> "" Then GoTo ErrorNotDeleted
+            On Error GoTo 0
+                Application.StatusBar = "Archived inactive master " & sTgtPth
+                Debug.Print "Archived inactive master " & sTgtPth
+                On Error Resume Next
+                'ThisWorkbook.Activate
+                With rFileList.Cells(f)
+                    'Application.GoTo .EntireRow.Cells(cUpd)
+                    .EntireRow.Cells(cUpd).Comment.Delete
+                    .EntireRow.Cells(cUpd).AddComment "Archived master " & sTgtPth & " to 'Disabled' folder"
+                    'NB: on next run, this row will be highlighted for removal
+                    GoTo NextFile
+                End With 'rFileList.Cells(f)
+                On Error GoTo 0
+            End If
+        End If
+        
+    'if not read-only, process it and update the timestamp
+        If InStr(Application.Caption, "read-only") = 0 Then
+            On Error Resume Next
+            
+            Application.StatusBar = "Processing " & sTgtPth
+            Debug.Print "Processing " & sTgtPth
+    
+        'replace the MACROS sheet with the one in this workbook
+        '(similar process if any other "master" sheets can be included in this workbook)
+            If wbTarget.Name <> ThisWorkbook.Name Then Call ReplaceMACROSsheet(wbTarget)
+    
+        'replace any existing modules with standard .bas files in \Automation\VBA\
+        'result is whether anything was replaced, if not, don't need to save
+            bSaveTarget = ReplaceModulesInWorkbook(wbTarget, ModulePath, mmax, f, rFileList)
+           
+        'replace old paths in Data Connections (.odc files)
+            If ReplaceDataConnectionPaths(wbTarget) = True Then bSaveTarget = True
+        
+        'replace old paths in Linked Workbooks (cell references)
+            If ReplaceLinkedWorkbookPaths(wbTarget) = True Then bSaveTarget = True
+    
+        'replace old paths in admin sheet to Master and Testing (doesn't change Output folder paths)
+            If ReplaceAdminPaths(wbTarget, "admin_Master") = True Then bSaveTarget = True
+            If ReplaceAdminPaths(wbTarget, "admin_Working") = True Then bSaveTarget = True
+        
+        'replace old paths in admin sheet to Output (doesn't change Master/Working folder paths)
+            If ReplaceAdminPaths(wbTarget, "admin_OutputFile") = True Then bSaveTarget = True
+        
+    'NB: this fails on compile - need to record it, can we?
+    'now we Debug > Compile the project
+    'Set compileMe = objVBECommandBar.FindControl(Type:=msoControlButton, ID:=578)
+    'compileMe.Execute
+    
+        'Record the details from target workbook
+            With rFileList.Cells(f)
+                .Comment.Delete
+                .EntireRow.Cells(cUpd).Comment.Delete
+            'log output file path and create hyperlink
+                'Application.GoTo .EntireRow.Cells(cOut)
+                If wbTarget.Sheets("admin").Range("admin_OutputFile") = "" Then .EntireRow.Cells(cOut).Value = "n/a" Else .EntireRow.Cells(cOut).Value = wbTarget.Sheets("admin").Range("admin_OutputFile")
+                .EntireRow.Cells(cOut).Hyperlinks.Add .EntireRow.Cells(cOut), .EntireRow.Cells(cOut).Value
+            'log master file and create hyperlink
+                .EntireRow.Cells(cMst).Value = wbTarget.FullName
+                .EntireRow.Cells(cMst).Hyperlinks.Add .EntireRow.Cells(cMst), .EntireRow.Cells(cMst).Value
+            'log testing folder path and create hyperlink
+                If wbTarget.Sheets("admin").Range("admin_Working") = "" Then .EntireRow.Cells(cTst).Value = "n/a" Else .EntireRow.Cells(cTst).Value = wbTarget.Sheets("admin").Range("admin_Working")
+                .EntireRow.Cells(cTst).Hyperlinks.Add .EntireRow.Cells(cTst), .EntireRow.Cells(cTst).Value
+            'log size of master file in MB
+                'Application.GoTo .EntireRow.Cells(cCMB)
+                iSize = 0
+                iSize = Int(FileLen(wbTarget.FullName) / 1024 / 1024)
+                .EntireRow.Cells(cCMB) = iSize
+            'check Access Control sheet
+                Dim sOldAC As String
+                sOldAC = ""
+                sOldAC = .EntireRow.Cells(cCAC)
+                .EntireRow.Cells(cCAC) = fn_Check_AC(wbTarget)
+                If sOldAC <> .EntireRow.Cells(cCAC) Then bSaveTarget = True
+                sOldAC = ""
+            'check if the target contains PP/PT/QT
+                'Application.GoTo .EntireRow.Cells(cCPP)
+                .EntireRow.Cells(cCPP) = fn_Check_PP(wbTarget)
+                'Application.GoTo .EntireRow.Cells(cCPT)
+                .EntireRow.Cells(cCPT) = fn_Check_PT(wbTarget)
+                'Application.GoTo .EntireRow.Cells(cCQT)
+                .EntireRow.Cells(cCQT) = fn_Check_QT(wbTarget)
+            'check the last VM used for update
+                'Application.GoTo .EntireRow.Cells(cCVM)
+                .EntireRow.Cells(cCVM) = fn_Check_VM(wbTarget, .EntireRow.Cells(cCVM).Text)
+            'check if it's using ODC, update them, and refresh
+                'Application.GoTo .EntireRow.Cells(cCOD)
+                .EntireRow.Cells(cCOD) = fn_Check_ODC(wbTarget)
+            'check for MySQL connections
+                'Application.GoTo .EntireRow.Cells(cCMy)
+                .EntireRow.Cells(cCMy) = fn_Check_MySQL(wbTarget)
+            'check for SQL Server connections
+                sv = 0
+                While Left(.EntireRow.Cells(cSvr + sv).EntireColumn.Cells(1), 7) = "Server "
+                    'Application.GoTo .EntireRow.Cells(cSvr)
+                    .EntireRow.Cells(cSvr + sv) = fn_Check_Svr(wbTarget, Mid(.EntireRow.Cells(cSvr + sv).EntireColumn.Cells(1), 8, 20))
+                    sv = sv + 1
+                Wend
+                sv = sv - 1
+                Debug.Print "Total " & sv & " servers checked"
+                sv = 0
+            'log the date/time we've updated target workbook
+                'Application.GoTo .EntireRow.Cells(cUpd)
+                With .EntireRow.Cells(cUpd)
+                    .Value = Now
+                If bSaveTarget Then
+                    .AddComment "saved, updated module(s)"
+                Else
+                    .AddComment "not saved, didn't update modules"
+                End If
+                End With '.EntireRow.Cells(cUpd)
+            End With
+            
+            'close the workbook (and save if applicable)
+            If DoAllMasters Then
+            
+            'save wbTarget if a module has been changed and the WB isn't corrupt
+                Application.EnableEvents = False
+                Application.CalculateBeforeSave = False
+                Application.DisplayAlerts = False
+                ThisWorkbook.Save
+                If bSaveTarget Then Call modAuto.SaveNewTestVersion(wbTarget)
+            'log current test version number
+            With rFileList.Cells(f)
+                'Application.GoTo .EntireRow.Cells(cVer)
+                With .EntireRow.Cells(cVer)
+                If xlVBAUpdater.xlU_SheetExists("ChangeLog", wbTarget) Then
+                    .Value = wbTarget.Sheets("ChangeLog").Range("B1").Value
+                Else
+                    .Value = "n/a"
+                End If
+                End With '.EntireRow.Cells(cVer)
+            End With 'rFileList.Cells(f)
+            
+            'try to close target
+                wbTarget.Close bSaveTarget
+            On Error Resume Next
+                Set wbTarget = Nothing
+                Set wbTarget = Workbooks(sTgtPth)
+            On Error GoTo 0
+                If Not wbTarget Is Nothing Then GoTo ErrorStillOpen
+                
+            End If
+            
+        On Error GoTo 0
+            
+    'if read-only, just close it and don't update the timestamp
+        Else
+        
+            rFileList.Cells(f).EntireRow.Cells(cUpd).Value = dOldTime     'mark it to be retried next time if it is read-only
+        'try to close target
+            wbTarget.Close bSaveTarget
+        On Error Resume Next
+            Set wbTarget = Nothing
+            Set wbTarget = Workbooks(sTgtPth)
+        On Error GoTo 0
+            If Not wbTarget Is Nothing Then GoTo ErrorStillOpen
+            Application.StatusBar = "Closed read-only workbook " & sTgtPth
+            Debug.Print "Closed read-only workbook " & sTgtPth
+            On Error Resume Next
+            'ThisWorkbook.Activate
+            With rFileList.Cells(f)
+                'Application.GoTo .EntireRow.Cells(cUpd)
+                .Comment.Delete
+                .EntireRow.Cells(cUpd).Comment.Delete
+                .EntireRow.Cells(cUpd).AddComment "Closed read-only " & sTgtPth
+            End With 'rFileList.Cells(f)
+            On Error GoTo 0
+        
+        End If  'test for read-only
+    
+   
+NextFile:
+        If Not DoAllMasters Then 'just do open file(s)
+            w = w + 1
+            If w > Workbooks.Count Then GoTo CleanUp
+            sFil = Workbooks(w).Name
+        End If
+    
+    Next MyFile
+
+GoTo CleanUp
+
+
+ErrorStillOpen:
+    MsgBox sTgtPth & vbLf & vbLf & "WARNING: workbook may be corrupt, Excel may crash now", vbCritical, "Error: Couldn't close wbTarget"
+    GoTo CleanUp
+
+ErrorTooManyModules:
+    MsgBox "mmax > 255, check the module list", vbCritical, "Error: Too Many Modules"
+    GoTo CleanUp
+
+ErrorNoDummyInFileList:
+    MsgBox "Check the file list, first should always be Dummy Row", vbCritical, "Error: No Dummy In File List"
+    GoTo CleanUp
+
+ErrorFileTooBig:
+    Debug.Print "Bypassed " & sFil & ", workbook over size limit"
+    GoTo NextFile
+
+ErrorNotDeleted:
+    Debug.Print "Didn't delete " & sFil & ", try again later or delete manually"
+    GoTo NextFile
+
+CleanUp:
+    On Error GoTo 0
+With Application
+    .DisplayAlerts = bADA
+    .EnableEvents = bAEE
+    .CalculateBeforeSave = bACBS
+    .Calculation = iAC
+End With
+End Sub
+
+Function ReplaceModulesInWorkbook(ByRef wbTarget As Workbook _
+    , ByRef ModulePath As String, ByRef ModuleCount As Byte _
+    , ByRef iFileRowNumber As Integer, ByRef rFileList As Range) As Boolean
+'v3.27 2017-08-03 09:58 - better control of checking version numbers, better on screen messages
+'v3.26 2017-08-02 17:00 - bugfix, direct reference to rFileList cells for versions
+'v3.25 2017-08-02 16:47 - bugfix, if master version differs from recorded list, it updates the module
+'v3.20 2017-07-05 16:43 - no longer activates, seems to cause issues with some workbooks
+'v3.15 2017-06-22 12:12 - always deletes specified modules
+'v3.08 2017-05-05 14:43 - errorhandlers for set oModule
+'v3.07 2017-05-05 11:15 - added safety net for missing mandatory modules (in case deleted in error and master was saved)
+'v3.06 2017-05-04 16:21 - renamed uos to cUpd and rejigged offsets
+'v3.05 2017-05-04 14:31 - renamed boolean
+'v3.03 2017-02-24 18:50 - adds mandatory modules if missing
+'v3.01 2017-02-03 11:59 - used uos as Const to fix offsets, only updates module if it doesn't match (ideally want to switch this to earlier in the process to avoid opening files unnecessarily)
+'v2.01 2017-01-16 14:07 - adds comment on failure, deletes comment on success
+'v1.04 2016-09-16 13:32 - only add admin sheets if modAuto is in the workbook
+'v1.03 2016-08-30 13:11 - check if mandatory admin sheets are present
+'v1.00 2016-05-03 17:30 - first version
+
+Dim m As Byte, f As Integer, oModule As Object
+
+'this controls later on whether we should copy the admin sheets
+Dim bAutomated As Boolean
+On Error Resume Next
+Set oModule = wbTarget.VBProject.VBComponents("modAuto")
+On Error GoTo 0
+If Not oModule Is Nothing Then bAutomated = True
+
+Dim bIsMissing As Boolean
+Dim sOldVer As String, sNewVer As String
+
+bReplacedModule = False 'reset Private switch
+
+Dim r As Integer
+Dim bDeleteIfPresent As Boolean, rDelete As Range
+Set rDelete = updVBA_Settings.Range("admin_AlwaysDelete")
+Set rDelete = updVBA_Settings.Range(rDelete, rDelete.End(xlDown))
+Dim bAddIfMissing As Boolean, rMandatory As Range
+Set rMandatory = updVBA_Settings.Range("admin_Mandatory")
+Set rMandatory = updVBA_Settings.Range(rMandatory, rMandatory.End(xlDown))
+Dim bReplaceIfMismatched As Boolean
+
+f = iFileRowNumber
+For m = 1 To ModuleCount
+    GenericModuleVersion(m) = rFileList.Cells(1).EntireRow.Cells(cMod + m - 1)
+    Application.Goto rFileList.Cells(f)
+    If bAutomated Then
+    'is this a module to always delete if it's present?
+        bDeleteIfPresent = False
+        r = 0
+        On Error Resume Next
+        r = Application.Match(ModuleName(m), rDelete, 0)
+        On Error GoTo 0
+        If r > 0 Then bDeleteIfPresent = True
+        r = 0
+    'is this a mandatory module to always add if it's missing?
+        bAddIfMissing = False
+        r = 0
+        On Error Resume Next
+        r = Application.Match(ModuleName(m), rMandatory, 0)
+        On Error GoTo 0
+        If r > 0 Then bAddIfMissing = True
+        r = 0
+    End If
+    If bDeleteIfPresent Or bAddIfMissing Or Left(ModuleName(m), 5) = "admin" Then
+        bIsMissing = False
+        On Error Resume Next
+        Set oModule = Nothing
+        Set oModule = wbTarget.VBProject.VBComponents(ModuleName(m))
+        On Error GoTo 0
+        If oModule Is Nothing Then bIsMissing = True
+    End If
+    'except when updating the Generic file (f=1), compare version in THIS row with version in Generic file, before updating
+    'this saves time re-importing modules unnecessarily
+    'requires that Generic file always has the latest version
+    ReportModuleVersion(m) = rFileList.Cells(f).EntireRow.Cells(cMod + m - 1)
+On Error Resume Next
+    bReplaceIfMismatched = False
+    sOldVer = ""
+    sOldVer = Replace(Application.Run("'" & wbTarget.FullName & "'!" & ModuleName(m) & "." & ModuleName(m) & "Ver"), ModuleName(m) & " ", "")
+    Debug.Print "     Checking: " & ModuleName(m) & " " & sOldVer
+    If sOldVer <> "" And ReportModuleVersion(m) <> sOldVer Then
+        bReplaceIfMismatched = True
+        ReportModuleVersion(m) = sOldVer
+    End If
+    If f = 1 _
+    Or ReportModuleVersion(m) <> GenericModuleVersion(m) _
+    Or bIsMissing Or bReplaceIfMismatched Then
+        sNewVer = ""
+        sNewVer = ReplaceOneModule(ModulePath, ModuleName(m), wbTarget, bAutomated, bAddIfMissing, bDeleteIfPresent)
+        If sNewVer <> ReportModuleVersion(m) Then
+            ReportModuleVersion(m) = sNewVer
+            Debug.Print "     Removed : " & ModuleName(m)
+            bReplacedModule = True    'if any modules were updated, this triggers save
+            If ThisWorkbook.Name = "Generic Sheets for Automation.xlsb" Then
+                rFileList.Cells(f).EntireRow.Cells(cMod + m - 1) = ReportModuleVersion(m)
+                If rFileList.Cells(f).EntireRow.Cells(cMod + m - 1) <> ReportModuleVersion(m) Then
+                    Debug.Print "     FAILED  : " & ModuleName(m)
+                End If
+            End If
+        ElseIf sNewVer <> "" And sOldVer <> sNewVer Then
+            Debug.Print "     Updated : " & ModuleName(m) & " " & sNewVer
+            ReportModuleVersion(m) = sNewVer
+            bReplacedModule = True    'if any modules were updated, this triggers save
+            If ThisWorkbook.Name = "Generic Sheets for Automation.xlsb" Then rFileList.Cells(f).EntireRow.Cells(cMod + m - 1) = ReportModuleVersion(m)
+        End If
+    End If
+On Error GoTo 0
+Next m
+
+'record the current file module versions, if we are safe to save & close it
+If bReplacedModule Then
+    For m = 1 To ModuleCount
+        If ReportModuleVersion(m) = "" Then
+        'module not in workbook
+            rFileList.Cells(f).EntireRow.Cells(cMod + m - 1).ClearContents
+        Else
+        'Record the version number (or X)
+            rFileList.Cells(f).EntireRow.Cells(cMod + m - 1).ClearContents
+            rFileList.Cells(f).EntireRow.Cells(cMod + m - 1).Value = ReportModuleVersion(m)
+        End If
+    Next m
+'delete the comment from the filename if it's processed OK
+    On Error Resume Next
+    rFileList.Cells(f).Comment.Delete
+    On Error GoTo 0
+End If
+
+ReplaceModulesInWorkbook = bReplacedModule
+End Function
+
+Function ReplaceOneModule(ByVal ModulePath As String, ByVal ModuleName As String _
+    , Optional wbTarget As Workbook, Optional bAutomated As Boolean _
+    , Optional bAddModuleIfMissing As Boolean, Optional bDeleteModuleIfPresent As Boolean) As String
+'v3.24 2017-08-02 10:34 - bugfixes around adding missing sheets, better error handling
+'v3.22 2017-07-31 10:09 - bugfix when copying sheets with existing range names, Application.DisplayAlerts = False
+'v3.15 2017-06-22 12:25 - added bDeleteModuleIfPresent exception
+'v3.08 2017-05-05 14:43 - added bAlwaysX test
+'v3.04 2017-05-02 16:55 - bugfix in version number, prevents failure when _module is still there
+'v3.03 2017-02-24 18:50 - bugfix in missing version number when adding new module
+'v3.02 2017-02-03 13:09 - commented errorhandler for removing _OLD module.  This does work but only after the macro ends.
+'v3.00 2017-01-25 11:31 - added code from http://stackoverflow.com/questions/19800184/vbcomponents-remove-doesnt-always-remove-module
+'v2.02 2017-01-23 16:57 - bugfix for NA Domestic reports
+'v2.00 2016-11-01 12:13 - rebuild to allow easier self-updates
+
+If wbTarget Is Nothing Then Set wbTarget = ThisWorkbook
+If ModuleName = "" Then Exit Function
+
+Dim oModule As Object, wsSource As Worksheet
+
+'force removal of _OLD module, if it's still there from last update
+On Error Resume Next
+    Set oModule = Nothing
+    Set oModule = wbTarget.VBProject.VBComponents(ModuleName & "_OLD")
+On Error GoTo 0
+    If Not oModule Is Nothing Then
+        wbTarget.VBProject.VBComponents.Remove oModule
+    End If
+
+'attempt to set module, to see if it exists already
+On Error Resume Next
+    Set oModule = Nothing
+    Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+On Error GoTo 0
+
+Dim rAlwaysX As Range, bAlwaysX As Boolean, bx As Byte
+With updVBA_Settings
+    Set rAlwaysX = .Range("admin_AlwaysX")
+    Set rAlwaysX = .Range(rAlwaysX.Offset(1), rAlwaysX.End(xlDown))
+    bx = 0
+On Error Resume Next
+    bx = Application.Match(ModuleName, rAlwaysX, 0)
+On Error GoTo 0
+    If bx > 0 Then bAlwaysX = True
+End With
+
+If Not oModule Is Nothing Then
+'this module/sheet is already present...
+    If bAlwaysX Or Left(ModuleName, 5) = "admin" Then
+    '...NEVER remove/add this module/sheet, just mark it as present
+        ReplaceOneModule = "X"    'default entry
+    Else
+'remove & re-add module
+    On Error Resume Next
+        With wbTarget.VBProject.VBComponents
+            If oModule.Type = 1 Then    'code module as opposed to sheet/workbook item
+                oModule.Name = ModuleName & "_OLD"
+                .Remove .Item(ModuleName & "_OLD")
+            Else
+                .Remove .Item(ModuleName)
+            End If
+        End With
+    On Error GoTo 0
+    'test - has it deleted?
+        Set oModule = Nothing
+    On Error Resume Next
+        Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+    On Error GoTo 0
+        If oModule Is Nothing Then
+        'it's deleted/renamed, so now we can re-import the module
+            If bDeleteModuleIfPresent = False Then
+                If Dir(ModulePath & ModuleName & ".bas") = "" Then
+                'couldn't import the specified module - shared drive access failure or file doesn't exist
+                    MsgBox wbTarget.Name & " couldn't access " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged." & vbLf & vbLf & ModulePath & ModuleName & ".bas", vbCritical, ""
+                    End
+                End If
+                wbTarget.VBProject.VBComponents.Import ModulePath & ModuleName & ".bas"
+            On Error Resume Next
+                Set oModule = wbTarget.VBProject.VBComponents(ModuleName)
+            On Error GoTo 0
+                If Not oModule Is Nothing Then
+                'Can we get the version number from the module?
+                    ReplaceOneModule = "X"    'default entry
+                On Error Resume Next
+                    ReplaceOneModule = Replace(Application.Run("'" & wbTarget.FullName & "'!" & ModuleName & "." & ModuleName & "Ver"), ModuleName & " ", "")     'actual version number
+                On Error GoTo 0
+                'Set the save switch to True, because at least one module has been replaced
+                    bReplacedModule = True
+                Else
+                'couldn't import the module
+                    MsgBox wbTarget.Name & " failed to import " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+                    End
+                End If
+            End If
+        'attempt removal of _OLD module, if it's still there (usually clears it when saving if this doesn't work)
+            Set oModule = Nothing
+        On Error Resume Next
+            Set oModule = wbTarget.VBProject.VBComponents(ModuleName & "_OLD")
+        On Error GoTo 0
+            If Not oModule Is Nothing Then
+                wbTarget.VBProject.VBComponents.Remove oModule  'just try to force it one more time
+                If Not oModule Is Nothing Then
+                'it hasn't deleted the module - don't add it again and don't log it, just quit
+                'commented this because, although it persists, it usually does actually delete the _OLD module after the macro ends
+                    'MsgBox wbTarget.Name & " failed to delete " & ModuleName & "_OLD" & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+                    'End
+                End If
+            End If
+        Else
+        'it hasn't deleted the module - don't add it again and don't log it, just quit
+            MsgBox wbTarget.Name & " failed to delete " & ModuleName & ", will now exit. Update it manually or exclude from list by setting future date.  Previous successful updates have been logged.", vbCritical, ""
+            End
+        End If
+    End If
+Else
+'this module/sheet is NOT present...
+'so do we need to add it?
+    If ModuleName = "modExtra" Or bAddModuleIfMissing Then
+    'always try to add this module if absent - but NEVER remove it
+    On Error Resume Next
+        wbTarget.VBProject.VBComponents.Import ModulePath & ModuleName & ".bas"
+    'Can we get the version number from the added module?
+        ReplaceOneModule = "X"    'default entry
+        ReplaceOneModule = Replace(Application.Run("'" & wbTarget.FullName & "'!" & ModuleName & "Ver"), ModuleName & " ", "")     'actual version number
+    'Set the save switch to True
+        Set oModule = Nothing
+        Set oModule = ThisWorkbook.VBProject.VBComponents(ModuleName)
+        If Not oModule Is Nothing Then bReplacedModule = True
+    On Error GoTo 0
+    ElseIf (bAutomated And ModuleName = "pivValidate") _
+        Or (bAutomated And Left(ModuleName, 5) = "admin") _
+    Then
+    'always copy this sheet from Generic Sheets for Automation if missing
+    On Error Resume Next
+        Set oModule = Nothing
+        Set oModule = ThisWorkbook.VBProject.VBComponents(ModuleName)
+        If Not oModule Is Nothing Then
+            Set wsSource = Nothing
+            Set wsSource = ThisWorkbook.Sheets(oModule.Properties("Name").Value)
+Application.DisplayAlerts = False
+            wsSource.Copy After:=wbTarget.Sheets(wbTarget.Sheets.Count)
+Application.DisplayAlerts = True
+            Set wsSource = Nothing
+            Set wsSource = wbTarget.Sheets(oModule.Properties("Name").Value)
+            If Not wsSource Is Nothing Then
+                ReplaceOneModule = "X"          'default entry
+                bReplacedModule = True
+            Else
+                ReplaceOneModule = ""           'failed/missing
+            End If
+        End If
+    On Error GoTo 0
+    Else
+    'Module not in file - clear marker from checklist before re-importing
+        ReplaceOneModule = ""
+    End If
+End If
+'just make sure to remove any modModule1, modModule2, etc.
+On Error Resume Next
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 1)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 2)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+Set oModule = wbTarget.VBProject.VBComponents(ModuleName & 3)
+If Not oModule Is Nothing Then wbTarget.VBProject.VBComponents.Remove oModule
+Set oModule = Nothing
+On Error GoTo 0
+End Function
+
+Sub ReplaceMACROSsheet(wbTarget As Workbook)
+'v3.13 2017-06-06 10:33 - removed xlUtils binding, copied xlU_SheetExists function to this module
+'v1.00 2016-05-03 17:30 - first version
+'completely replaces the MACROS sheet in target file with the master version in this file
+
+'quit if no admin sheet exists (auto-adds MACROS)
+If xlVBAUpdater.xlU_SheetExists("admin", wbTarget) = False Then Exit Sub
+
+Dim nm As Name
+'delete the worksheet from target
+Application.DisplayAlerts = False
+    wbTarget.Sheets("admin").Visible = xlSheetVisible 'must have one visible sheet remaining
+    
+    If xlVBAUpdater.xlU_SheetExists("MACROS", wbTarget) Then
+        wbTarget.Sheets("MACROS").Visible = xlSheetVisible 'must be visible to delete it
+        wbTarget.Sheets("MACROS").Delete
+    End If
+    If xlVBAUpdater.xlU_SheetExists("MACROS (2)", wbTarget) Then
+        wbTarget.Sheets("MACROS (2)").Visible = xlSheetVisible 'must be visible to delete it
+        wbTarget.Sheets("MACROS (2)").Delete
+    End If
+Application.DisplayAlerts = True
+'delete any duff Names from target relating to the deleted sheet
+    For Each nm In wbTarget.Names
+        If InStr(nm.RefersTo, "MACROS") > 0 Then nm.Delete
+    Next nm
+    Dim iVis As Integer
+    iVis = wbTarget.Sheets(1).Visible
+    If iVis <> xlSheetVisible Then wbTarget.Sheets(1).Visible = xlSheetVisible
+    ThisWorkbook.Sheets("MACROS").Copy Before:=wbTarget.Sheets(1)
+    If iVis <> xlSheetVisible Then wbTarget.Sheets(2).Visible = xlSheetVeryHidden
+'delete any duff Names from target relating to this workbook
+    With wbTarget.Sheets("MACROS")
+        .Unprotect
+    For Each nm In wbTarget.Names
+        If InStr(nm.RefersTo, ThisWorkbook.Name) > 0 Then nm.Delete
+    Next nm
+        .Protect
+    End With
+
+End Sub
+
+Private Function ReplaceDataConnectionPaths(ByRef wbTarget As Excel.Workbook) As Boolean
+'v7.01 2019-01-08 10:20 - ReplaceDataConnectionPaths: changed code to new Group Data share
+'v5.01 2018-04-18 11:01 - ReplaceDataConnectionPaths: changed Debug.Print message
+'v4.07 2018-03-27 14:50 - bugfix: better to use Y: paths for .odc files in case they move
+'v4.05 2018-03-27 10:22 - note: only works with .odc file connections, not MS Access
+'v4.00 2018-03-26 15:21 - replaces paths in Data Connections
+Debug.Print "Updating Data Connection paths in " & wbTarget.Name
+Dim cn As Object, sOld As String, sNew As String, s As Integer, f As Integer
+For Each cn In wbTarget.Connections
+'get old string
+On Error Resume Next
+    sOld = ""
+    sOld = cn.OLEDBConnection.SourceConnectionFile
+On Error GoTo 0
+'check old string
+    sNew = sOld
+    sNew = Replace(sNew, "\rcfs\P&C", "\Group Data\P&C")        'v7.01
+    sNew = Replace(sNew, "\BackOffice\P&C", "\Group Data\P&C")  'v7.01
+    sNew = Replace(sNew, sPathYDrive, "Y:\")                    'v7.01
+    sNew = Replace(sNew, "Y:\RT\Automation\", "M:\Automation\")
+    If sOld <> sNew Then
+    'replace with new string
+        Debug.Print "Updating " & cn.Name
+        Debug.Print "Old: " & sOld
+        Debug.Print "New: " & sNew
+        cn.OLEDBConnection.SourceConnectionFile = sNew
+        If sNew = cn.OLEDBConnection.SourceConnectionFile Then
+            Debug.Print "ReplaceDataConnectionPaths: SUCCESS"
+            s = s + 1
+            ReplaceDataConnectionPaths = True
+        Else
+            Debug.Print "ReplaceDataConnectionPaths: FAILURE"
+            f = f + 1
+        End If
+    End If
+Next cn
+'validate
+If s > 0 Then Debug.Print "Updated " & s & " connections"
+If f > 0 Then Debug.Print "Failed to update " & f & " connections"
+If s = 0 And f = 0 Then Debug.Print "No connections updated"
+End Function
+
+Private Function ReplaceLinkedWorkbookPaths(ByRef wbTarget As Excel.Workbook) As Boolean
+'v4.04 2018-03-26 22:02 - bugfix, wasn't doing Find & Replace
+'v4.01 2018-03-26 21:27 - replaces paths in Linked Workbooks
+Debug.Print "Updating old file path links (in cells) in " & wbTarget.Name
+Dim sCell As String, sOld As String, sNew As String
+Const cOld As String = "\rcfs\P&C"
+Const cNew As String = "\Group Data\P&C"
+With wbTarget
+    .Activate
+    .Sheets("admin").Activate
+    sCell = ActiveCell.Address
+    sOld = cOld
+'On Error Resume Next
+    Cells.Find(What:=sOld, After:=ActiveCell, LookIn:=xlFormulas, _
+        LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlNext, _
+        MatchCase:=False, SearchFormat:=False).Activate
+'On Error GoTo 0
+    If ActiveCell.Address <> sCell Then
+        Cells.Replace What:=cOld, Replacement:=cNew, LookAt:=xlPart, SearchOrder:=xlByRows, MatchCase:=False, SearchFormat:=False, ReplaceFormat:=False
+        Debug.Print "Old paths found & replaced"
+        ReplaceLinkedWorkbookPaths = True  'triggers save of wbTarget
+    End If
+End With
+Debug.Print "Done"
+End Function
+
+Private Function ReplaceAdminPaths(ByRef wbTarget As Excel.Workbook, sRangeName As String) As Boolean
+'v7.02 2019-01-10 17:53 - ReplaceAdminPaths: moved Company to Group Data
+'v7.01 2019-01-08 10:20 - ReplaceAdminPaths: allows to change paths from old to new shares
+'sRangeName options: admin_Master, admin_Working, admin_OutputFile (or indeed any valid range on admin sheet)
+Dim sOld As String, sNew As String
+With wbTarget
+    sOld = .Sheets("admin").Range(sRangeName)
+    sNew = sOld
+'automation folders
+    sNew = Replace(sNew, "\\company.local\rcfs\P&C\RT\Automation\", "\\company.local\Group Data\Automation\")
+    sNew = Replace(sNew, "\\company.local\BackOffice\P&C\RT\Automation\", "\\company.local\Group Data\Automation\")
+    sNew = Replace(sNew, "Y:\P&C\RT\Automation\", "\\company.local\Group Data\Automation\")
+    sNew = Replace(sNew, "M:\Automation\", "\\company.local\Group Data\Automation\")
+'output folders
+    sNew = Replace(sNew, "\\company.local\rcfs\Company\", "\\company.local\Group Data\Company\")
+    sNew = Replace(sNew, "\\company.local\BackOffice\P&C\", "\\company.local\Group Data\P&C\")
+'set new path (if necessary)
+    If sOld = sNew Then Exit Function Else ReplaceAdminPaths = True
+    .Sheets("admin").Range(sRangeName) = sNew
+End With
+End Function
+
+Private Function xlU_SheetExists(ByVal wsname As String _
+    , Optional ByRef wb As Excel.Workbook) As Boolean
+'xlUtils v7.01 2013-04-12 15:00
+'returns TRUE if the sheet exists in the active (or specified) workbook
+
+If wb Is Nothing Then Set wb = ActiveWorkbook
+
+xlU_SheetExists = False
+On Error GoTo NoSuchSheet
+If Len(wb.Sheets(wsname).Name) > 0 Then
+    xlU_SheetExists = True
+    Exit Function
+End If
+
+NoSuchSheet:
+End Function
+
+Function test_look_for_latest_test_version()
+test_look_for_latest_test_version = modFile.mfLoopThroughFilesInAFolder(sPathYDrive & "RT\Automation\Testing\Daily Margin Exceptions", , True)
+End Function
+
+Function fn_Check_PP(ByVal wbTgt As Workbook) As Boolean
+'v3.21 2017-07-25 16:47 - bugfix, didn't work
+'v3.17 2017-06-30 12:59 - fn_Check_PT: checks for PP/PT/QT in target
+Dim cn As Object
+For Each cn In wbTgt.Connections
+    If cn.Name = "ThisWorkbookDataModel" Then
+        fn_Check_PP = True
+        Exit Function
+    End If
+Next cn
+End Function
+
+Function fn_Check_PT(ByVal wbTgt As Workbook) As Boolean
+'v3.17 2017-06-30 12:59 - fn_Check_PT: checks for PP/PT/QT in target
+Dim ws As Worksheet
+For Each ws In wbTgt.Sheets
+    If ws.PivotTables.Count > 0 Then GoTo PTFound
+Next ws
+Exit Function
+PTFound:
+fn_Check_PT = True
+End Function
+
+Function fn_Check_QT(ByVal wbTgt As Workbook) As Boolean
+'v3.17 2017-06-30 12:59 - fn_Check_QT: checks for PP/PT/QT in target
+Dim ws As Worksheet
+For Each ws In wbTgt.Sheets
+    If ws.ListObjects.Count > 0 Then GoTo QTFound
+Next ws
+Exit Function
+QTFound:
+fn_Check_QT = True
+End Function
+
+Function fn_Check_ODC(ByVal wbTgt As Workbook) As String
+'v7.01 2019-01-08 10:20 - fn_Check_ODC: changed code to new Group Data share
+'v6.06 2018-05-18 16:49 - fn_Check_ODC: bugfix, don't refresh as BackgroundQuery
+'v6.03 2018-05-18 12:42 - fn_Check_ODC: refreshes .ODC files to ensure they bring in the current connection details
+'v4.08 2018-03-27 15:18 - fn_Check_ODC: checks for ODC files in target
+Dim cn As Object, sConn As String, sPath As String
+fn_Check_ODC = ""
+For Each cn In wbTgt.Connections
+    sPath = ""
+On Error Resume Next
+    sPath = cn.OLEDBConnection.SourceConnectionFile
+On Error GoTo 0
+    If sPath = "" Then GoTo NextCN  'not an OLEDB connection
+    sPath = Replace(sPath, "\\company.local\BackOffice\P&C\", "Y:\")
+    sPath = Replace(sPath, "\\company.local\Group Data\P&C\", "Y:\")  'v7.01
+    sPath = Replace(sPath, "Y:\RT\Automation\", "M:\Automation\")  'v7.01
+    If InStr(sPath, ".odc") > 0 Then
+        If fn_Check_ODC = "" Then fn_Check_ODC = "Yes"  'there's an ODC in this file
+        If Left(cn.Name, 1) <> "@" Then GoTo UnofficialODC
+        With cn.OLEDBConnection
+            .SourceConnectionFile = sPath
+            .AlwaysUseConnectionFile = True
+        End With
+        cn.RefreshWithRefreshAll = True
+        cn.BackgroundQuery = False
+On Error GoTo RefreshFailed 'resumes next
+        cn.Refresh
+On Error GoTo 0
+        cn.BackgroundQuery = True
+        If cn.OLEDBConnection.SourceConnectionFile <> sPath Then GoTo UpdateFailed
+    End If
+NextCN:
+Next cn
+If fn_Check_ODC = "Yes" Then fn_Check_ODC = "OK"    'no failures
+Exit Function
+UnofficialODC:
+    Debug.Print wbTgt.Name & " | " & cn.Name & " is unofficial | " & sPath
+    GoTo NextCN     'only run this on "official" ODC files
+RefreshFailed:
+    Debug.Print wbTgt.Name & " | " & cn.Name & " didn't refresh | " & sPath
+    fn_Check_ODC = "Check"
+    Resume Next
+UpdateFailed:
+    Debug.Print wbTgt.Name & " | " & cn.Name & " didn't update | " & sPath
+    fn_Check_ODC = "Check"
+    Resume Next
+End Function
+
+Function fn_Check_Svr(ByVal wbTgt As Workbook, ByVal sServerName As String) As Boolean
+'v6.07 2018-05-18 17:05 - fn_Check_Svr: bugfix, ignore ODC files, produces false positives
+'v6.02 2018-05-18 11:30 - fn_Check_Svr: bugfix, didn't work, produced false positives
+'v6.02 2018-05-18 11:30 - fn_Check_Svr: bugfix, didn't work, produced false positives
+'v5.00 2018-04-17 13:26 - fn_Check_Svr: checks for server names in Connections in target
+Dim cn As Object, sConn As String, sPath As String ', sCName As String
+fn_Check_Svr = False
+On Error Resume Next
+For Each cn In wbTgt.Connections
+'commented this, as it risks missing non-ODC @Standard connections
+'    sCName = ""
+'    sCName = cn.Name
+'    If Left(sCName, 1) = "@" Then GoTo NextCN   'ignore standard ODC connections, they give false positives
+    sPath = ""
+On Error Resume Next
+    sPath = cn.OLEDBConnection.SourceConnectionFile
+On Error GoTo 0
+    If sPath <> "" Then GoTo NextCN  'ignore ODC connections, they give false positives
+    sConn = ""
+    sConn = cn.OLEDBConnection.Connection
+    If InStr(cn.OLEDBConnection.Connection, sServerName) = 0 Then GoTo NextCN
+    fn_Check_Svr = True
+    Exit Function
+NextCN:
+Next cn
+End Function
+
+Function fn_Check_AC(ByVal wbTgt As Workbook, Optional DoThisWorkbook As Boolean) As String
+'v7.03 2019-03-26 12:35 - fn_Check_AC: changed code to delete the sheet, it's no longer required.  Commented code below to re-add in future if needed.
+'v7.01 2019-01-08 10:20 - fn_Check_AC: changed code to new Group Data share
+'v6.04 2018-05-18 13:11 - fn_Check_AC: points to new @Access_Control.odc file
+'v5.02 2018-04-18 18:18 - fn_Check_AC: bugfix, checks .ODC file in use, doesn't swap if it is, does if it's not
+'v4.09 2018-03-27 15:39 - fn_Check_AC: bugfix, prevents warnings when replacing sheet; improved error handler
+'v4.07 2018-03-27 14:55 - fn_Check_AC: bugfix, prevents deleting original sheet from master file
+'v4.06 2018-03-27 13:17 - fn_Check_AC: optionally replaces Access Control sheet in target to ensure current version is in use
+'v3.32 2017-11-14 11:50 - fn_Check_AC: checks Access Control in target
+
+Application.DisplayAlerts = False
+
+'!! If wbTgt.Name = ThisWorkbook.Name And Not DoThisWorkbook Then Exit Function
+If wbTgt.Name = ThisWorkbook.Name Then GoTo ExitFunction
+
+'!! CODE COMMENTED OUT, ALWAYS DELETE SHEET WHEN PRESENT AS ACCESS CONTROL NO LONGER REQUIRED
+
+Const cCurrentACVersion As String = "@ODC"   'confirms correct AC sheet is in place with ODC file connection
+Const sPathCurrent As String = "M:\Automation\File DSNs\Office ODC\@Access_Control.odc" 'restricted access to M:\Automation\
+
+'!!
+''check if it's an ODC linked connection
+'    Debug.Print "Checking Data Connections for ODC files in " & wbTgt.Name
+'    Dim cn As Object, sOld As String, sNew As String, s As Integer, f As Integer
+'    For Each cn In wbTgt.Connections
+'    If cn.Name = "Access Control" Or cn.Name = "@Access_Control" Then
+'        sOld = ""
+'    'get old string
+'    On Error Resume Next
+'        sOld = cn.OLEDBConnection.SourceConnectionFile
+'    On Error GoTo 0
+'    'check ODC
+'        If sOld = "" Then sNew = sPathCurrent Else sNew = sOld
+'    'check old string path
+'        sNew = Replace(sNew, "\rcfs\P&C", "\Group Data\P&C")
+'        sNew = Replace(sNew, "\BackOffice\P&C", "\Group Data\P&C")
+'        sNew = Replace(sNew, sPathYDrive, "Y:\")
+'        sNew = Replace(sNew, "Y:\RT\Automation\", "M:\Automation\")  'v7.01
+'        sNew = Replace(sNew, "Access Control.odc", "@Access_Control.odc")
+'        If sOld <> sNew Or updVBA_Settings.cbReplaceAccessControl = True Then
+'        'replace with new string
+'            Debug.Print "Updating " & cn.Name
+'            Debug.Print "Old: " & sOld
+'            Debug.Print "New: " & sNew
+'            With cn.OLEDBConnection
+'                .SourceConnectionFile = sNew
+'                .AlwaysUseConnectionFile = True
+'            End With
+'            cn.RefreshWithRefreshAll = True
+'            cn.BackgroundQuery = False
+'On Error GoTo ErrorHandlerRefreshFailed
+'            cn.Refresh
+'On Error GoTo 0
+'            cn.BackgroundQuery = True
+'            cn.Name = "@Access_Control"
+'            GoTo ErrorHandlerODC    'all done!
+'        End If
+'    End If
+'    Next cn
+'
+'If wbTgt.Name = ThisWorkbook.Name And DoThisWorkbook Then
+'    MsgBox "WARNING: Access Control in Generic Sheets file is wrong", vbCritical, ""
+'    Exit Function
+'End If
+'
+'swap the entire sheet
+'    On Error GoTo ErrorHandlerNoACSheet
+'    Dim wsAC As Worksheet
+'    Set wsAC = wbTgt.Sheets("Access Control")
+'    On Error GoTo ErrorHandler
+'    wsAC.Delete
+'    ThisWorkbook.Sheets("Access Control").Copy After:=wbTgt.Sheets("Email Notification")
+'    Application.DisplayAlerts = True
+'    wbTgt.Sheets("Access Control").ListObjects(1).QueryTable.Refresh BackgroundQuery:=False
+'    fn_Check_AC = cCurrentACVersion
+'!!
+   
+'delete the entire sheet
+    On Error GoTo ErrorHandlerNoACSheet
+    Dim wsAC As Worksheet
+    Set wsAC = wbTgt.Sheets("Access Control")
+    On Error GoTo ErrorHandler
+    wsAC.Delete
+    fn_Check_AC = ""        'just blank it out
+    GoTo ExitFunction
+
+ErrorHandler:
+    fn_Check_AC = "err"     'unspecified error
+    GoTo ExitFunction
+ErrorHandlerNoACSheet:
+    fn_Check_AC = ""        'just blank it out
+    GoTo ExitFunction
+'!!
+'ErrorHandlerNotODC:
+'    fn_Check_AC = "SQL"     'direct SQL connection, this is OK for now, but probably needs fixing
+'    GoTo ExitFunction
+'ErrorHandlerRefreshFailed:  'tried to update, refresh failed
+'    cn.BackgroundQuery = True
+'    fn_Check_AC = "Fail"
+'    GoTo ExitFunction
+'ErrorHandlerODC:
+'    fn_Check_AC = cCurrentACVersion 'all done
+'    GoTo ExitFunction
+'!!
+ExitFunction:
+Application.DisplayAlerts = True
+End Function
+
+Function fn_Check_MySQL(ByVal wbTgt As Workbook, Optional DoThisWorkbook As Boolean) As String
+'v6.01 2018-05-08 16:09 - added errorhandler for PP read-only connections
+'v6.00 2018-05-08 14:26 - added fn_Check_MySQL
+'switches old username/connection for new username/connection in MySQL ODBC connections
+'Note: doesn't work with OLEDB connections or PowerPivot
+
+Const cOldMySQLUser As String = "UID=P&C_Analysis" '"P&C_Analysis"
+Const cNewMySQLUser As String = "UID=pcinsightvm"
+Const cOldMySQLConn As String = "report-opsdb.db.company.com"
+Const cNewMySQLConn As String = "report-dwdb.db.company.com"
+If wbTgt.Name = ThisWorkbook.Name And Not DoThisWorkbook Then Exit Function
+Application.DisplayAlerts = False
+
+'check if it's an ODC linked connection
+    Debug.Print "Checking Data Connections for old MySQL username/connection in " & wbTgt.Name
+    Dim cn As Object, sOld As String, sNew As String, s As Integer, f As Integer
+    For Each cn In wbTgt.Connections
+    'check OLEDB string first
+    On Error Resume Next
+        sOld = ""
+        sOld = cn.OLEDBConnection.Connection
+    On Error GoTo 0
+        If sOld <> "" Then
+        'is it a MySQL OLEDB connection?
+            If InStr(sOld, "UID=") > 0 And InStr(sOld, "SERVER=") > 0 Then
+            '...it is
+                fn_Check_MySQL = "Yes"
+                If InStr(sOld, cOldMySQLUser) > 0 Or InStr(sOld, cOldMySQLConn) > 0 Then
+                'replace old with new username
+                    sNew = sOld
+                    sNew = Replace(sNew, cOldMySQLUser, cNewMySQLUser)
+                'replace old with new reporting layer
+                    sNew = Replace(sNew, cOldMySQLConn, cNewMySQLConn)
+                    If sOld <> sNew Then
+                    'replace with new string
+                        Debug.Print "Updating " & cn.Name
+                        Debug.Print "Old: " & sOld
+                        Debug.Print "New: " & sNew
+                        If fn_Check_PP(wbTgt) Then On Error GoTo ErrorHandlerPP
+                        cn.OLEDBConnection.Connection = sNew
+                        On Error GoTo 0
+                        If sNew = cn.OLEDBConnection.Connection Then
+                            GoTo ErrorHandlerVM
+                        Else
+                            GoTo ErrorHandler
+                        End If
+                    Else
+                        GoTo ErrorHandlerVM
+                    End If
+                End If
+            Else
+                GoTo NextConnection
+            End If
+        End If
+    'check OLEDB string
+    On Error Resume Next
+        sOld = ""
+        sOld = cn.OLEDBConnection.Connection
+    On Error GoTo 0
+        If sOld <> "" Then
+        'is it a MySQL OLEDB connection?
+            If InStr(sOld, "UID=") > 0 And InStr(sOld, "SERVER=") > 0 Then
+            '...it is
+                fn_Check_MySQL = "Yes"
+                If InStr(sOld, cOldMySQLUser) > 0 Or InStr(sOld, cOldMySQLConn) > 0 Then
+                'replace old with new username
+                    sNew = sOld
+                    sNew = Replace(sNew, cOldMySQLUser, cNewMySQLUser)
+                'replace old with new reporting layer
+                    sNew = Replace(sNew, cOldMySQLConn, cNewMySQLConn)
+                    If sOld <> sNew Then
+                    'replace with new string
+                        Debug.Print "Updating " & cn.Name
+                        Debug.Print "Old: " & sOld
+                        Debug.Print "New: " & sNew
+                        If fn_Check_PP(wbTgt) Then On Error GoTo ErrorHandlerPP
+                        cn.ODBCConnection.Connection = sNew
+                        On Error GoTo 0
+                        If sNew = cn.ODBCConnection.Connection Then
+                            GoTo ErrorHandlerVM
+                        Else
+                            GoTo ErrorHandler
+                        End If
+                    Else
+                        GoTo ErrorHandlerVM
+                    End If
+                End If
+            End If
+        End If
+NextConnection:
+        sOld = ""
+    Next cn
+If fn_Check_MySQL = "" Then fn_Check_MySQL = "None"  'no MySQL connection
+Exit Function
+
+ErrorHandler:
+    fn_Check_MySQL = "err"  'unspecified error
+    Exit Function
+ErrorHandlerPP:
+    fn_Check_MySQL = "PP"   'error, can't update connection
+    Exit Function
+ErrorHandlerVM:
+    fn_Check_MySQL = "VM"   'all done
+    Exit Function
+End Function
+
+Function fn_Check_VM(wbTgt As Workbook, sCurrentVM As String) As String
+'v7.05 2019-03-26 14:10 - fn_Check_VM: added VM1 and VM2
+'v6.08 2018-05-18 17:21 - fn_Check_VM: checks for the last published VM
+Dim sVMname As String, p As Byte
+sVMname = wbTgt.Sheets("admin").Range("admin_UpdatedBy").End(xlDown)
+p = InStr(sVMname, "|")
+If p = 0 Then
+    fn_Check_VM = sCurrentVM
+    Exit Function
+End If
+sVMname = Mid(sVMname, p + 1, 20)
+If sVMname = "lhr-report10-01" Then
+    fn_Check_VM = "VM10"
+ElseIf sVMname = "lhr-reporter-01" Then
+    fn_Check_VM = "VM7"
+ElseIf sVMname = "BG-LHR-PCINS-01" Then
+    fn_Check_VM = "VM1"
+ElseIf sVMname = "BG-LHR-PCINS-02" Then
+    fn_Check_VM = "VM2"
+Else
+    fn_Check_VM = sCurrentVM
+    If fn_Check_VM = "" Then fn_Check_VM = "man"    'last time it was manually updated
+End If
+End Function
+
+Sub test_change_connections_to_BI01()
+'v6.09 2018-05-18 18:58 - test_change_connections_to_BI01
+Dim cn As Object, sODC As String
+For Each cn In ThisWorkbook.Connections
+    sODC = ""
+On Error Resume Next
+    sODC = cn.OLEDBConnection.SourceConnectionFile
+On Error GoTo 0
+    If sODC <> "" Then
+        If InStr(cn.Name, "BI-SVR-01") Then cn.Name = Replace(cn.Name, "BI-SVR-01", "BI-01")
+        If InStr(cn.OLEDBConnection.Connection, "BI-SVR-01") Then cn.OLEDBConnection.Connection = Replace(cn.OLEDBConnection.Connection, "BI-SVR-01", "BI-01")
+        If InStr(cn.Name, "AMS-BI-BUILD01") Then cn.Name = Replace(cn.Name, "AMS-BI-BUILD01", "BI-01")
+        If InStr(cn.OLEDBConnection.Connection, "AMS-BI-BUILD01") Then cn.OLEDBConnection.Connection = Replace(cn.OLEDBConnection.Connection, "AMS-BI-BUILD01", "BI-01")
+        If InStr(cn.Name, "LHR-BI-BUILD01") Then cn.Name = Replace(cn.Name, "LHR-BI-BUILD01", "BI-01")
+        If InStr(cn.OLEDBConnection.Connection, "LHR-BI-BUILD01") Then cn.OLEDBConnection.Connection = Replace(cn.OLEDBConnection.Connection, "LHR-BI-BUILD01", "BI-01")
+    End If
+Next cn
+End Sub

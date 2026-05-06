@@ -1,0 +1,1033 @@
+Attribute VB_Name = "olAuditCops"
+Option Explicit
+Option Compare Text
+
+'Requires library references & modules:
+'   Microsoft Excel
+'   Microsoft ActiveX Data Objects v2.0 or later
+'   olArchiver.bas
+'   olReminders.bas
+
+Private Const DoDebug = False  'True bypasses logging and just displays the SQL code
+'v3.45 2019-10-23 10:24 - removed P&C Insight from emails
+'v3.44 2019-05-09 14:55 - added Audit_Archive_Of_Selected_Mail_Parent_Folder
+'v3.43 2019-04-10 12:58 - added lInsertCount and lUpdateCount for reporting succcess/failure
+'v3.42 2019-04-10 08:50 - added Audit_Rule_COps_Logging to overcome possible issues with Rules
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.40 2019-04-10 08:30 - added external references
+'v3.39 2019-04-10 08:24 - removed sPathYdrive, no longer used
+'v3.38 2019-01-04 12:08 - Audit_COps: option to bypass Appointments when running overnight audit
+'v3.37 2019-01-03 14:43 - Audit_All_MailItems: sends Started email first
+'v3.36 2018-12-18 12:12 - Audit_All_MailItems: added pcopsvm@company.com to BCC
+'v3.35 2018-11-07 17:00 - Audit_COps: bugfix: runs Audit_SQL_Inbox_Total after every *new* mail received - fixes unnecessary counting after every audit update
+'v3.34 2018-11-05 17:32 - Audit_SQL_Inbox_Total: added On Error Resume Next to prevent VBA hangups
+'v3.33 2018-10-18 16:20 - Audit_COps: now runs Audit_SQL_Inbox_Total after every mail received
+'v3.32 2018-10-16 10:24 - moved DoDebug to Private Const
+'v3.31 2018-09-20 08:48 - Audit_COps: switched EmailAddress to EmailDomain (GDPR)
+'v3.30 2018-09-12 18:13 - changed reference to schema in SQL Server
+'v3.29 2018-09-03 14:30 - Audit_LoopFolders: fixed exclusion for Team Archive subfolder
+'v3.28 2018-08-28 14:08 - Audit_LoopItems: sets bDoAll as Private variable, automates 1-by-1 or overnight audit
+'v3.27 2018-08-24 16:35 - Audit_SQL_Insert: added iReservation
+'v3.26 2018-08-24 14:47 - Audit_SQL_Update: added sSenderEmail update
+'v3.25 2018-08-24 14:39 - Audit_COps: bugfix in Exchange headers, uses Email_Sender_Address
+'v3.24 2018-08-23 17:01 - Audit_SQL_Update: bugfix in logic, wasn't updating anything
+'v3.23 2018-08-22 12:09 - Audit_COps: added Relaunch_Appointments to overcome issue with missed Appointments
+'v3.22 2018-08-20 16:22 - Audit_LoopFolders: added exclusion for Done Aged subfolder
+'v3.21 2018-08-20 16:02 - Audit_COps: commented out check for email Modified date because the logging process will modify it
+'v3.20 2018-08-17 17:31 - Audit_COps: reduced scope of full refresh, can manually override this setting to re-audit all emails after a logic change
+'v3.19 2018-08-17 17:23 - Audit_LoopFolders: adjusted folder exclusions list
+'v3.18 2018-08-17 16:33 - tiny bits of tidyup on comments
+'v3.17 2018-08-15 16:40 - Audit_RegEx_Reservation: changed to use olMail object, improved validity check for res number
+'v3.16 2018-07-03 17:32 - Audit_SQL_Inbox_Total: only 1 folder now for scanning
+'v3.15 2018-07-03 10:15 - Audit_SQL_Inbox_Total: added Debug.Print for oldest mail dates
+'v3.14 2018-06-25 17:24 - Audit_SQL_Inbox_Total: added extra folders for PQ
+'v3.13 2018-06-25 15:35 - Audit_SQL_Inbox_Total: added extra column for oldest email (to calculate lag)
+'v3.12 2018-06-12 14:42 - Audit_SQL_Inbox_Total: added errorhandler when failing to insert duplicate
+'v3.11 2018-06-04 14:11 - added Audit_SQL_Inbox_Total
+'v3.10 2018-06-04 09:44 - added fn_MailboxAbbr (common code)
+'v3.09 2018-06-04 09:44 - removed Audit_Email_Process
+'v3.08 2018-06-01 15:37 - Audit_LoopFolders: added folder exclusions for older emails
+'v3.07 2018-06-01 15:13 - Audit_COps: minor tweak, added dFirstDate
+'v3.06 2018-05-30 15:45 - Audit_COps: added iReservation to Update step
+'                       - Audit_SQL_Update: added iReservation to Update step
+'v3.05 2018-05-30 15:36 - Audit_RegEx_Reservation: first version
+'                       - Audit_COps: added Audit_RegEx_Reservation and iReservation to Insert step
+'v3.04 2018-05-30 11:26 - Audit_All_MailItems: added timer and confirmation email
+'v3.03 2018-05-30 09:58 - Audit_COps: added Select Case for the 3 inboxes, makes code common
+'v3.02 2018-05-30 09:37 - Audit_All_MailItems: changed to loop through all folders
+'v3.01 2018-05-29 20:15 - added bForceLogging option
+'v3.00 2018-05-29 18:44 - rewritten to use direct SQL inserts
+'                       - changed dSent to dSentOn
+'                       - removed sInbox, just refers sMailboxName and sMailboxAbbr
+'                       - formatting changes in code
+'                       - removed TXT logging code
+'                       - standardised code module & logging for all inboxes, updated rule
+'v2.02 2018-05-29 17:33 - added On Error Resume Next
+'v2.01 2018-05-09 16:47 - added references & external modules
+'v2.00 2018-04-05 11:37 - added Audit_COps for inboxes
+'v1.07 2018-03-27 12:22 - added sPathYDrive throughout
+'v1.06 2016-12-16 11:23 - process speed improvement: Calculation and ScreenUpdating
+'v1.05 2016-12-16 10:49 - added Message (was sNotes, but this stopped working) and AppUser to logging
+'v1.04 2016-12-07 14:40 - added Username to logging
+'v1.03 2016-10-04 10:05 - bugfix/improvement in save/close/quit process
+'v1.02 2016-10-04 08:55 - tweak to filldown formula to get UserName from EmailAddress@
+'v1.01 2016-??-?? ??:?? - added new field
+
+Public lLoggedCount As Long, lFailedCount As Long, lInsertCount As Long, lUpdateCount As Long
+
+Private Const olAuditTable As String = "[PandC_Sandpit].[COps].[Fct_Audit_COps_Inbox_Tracking]"
+Private Const olAuditCounts As String = "[PandC_Sandpit].[COps].[Fct_Audit_COps_Inbox_Counts]"
+
+Private Const bForceLogging As Boolean = False
+'False (default) will attempt to Update existing rows if already categorised as Logged, otherwise will attempt to Insert
+'True will attempt to Insert, even if already categorised as Logged
+'Ideally, only use True once, as it will recurse all folders and tries to log unnecessarily, but will not Update existing until it's run again with False
+'MailItems can only ever be logged (Inserted) once into SQL table, because a Primary Key restricts this
+
+Private bDoAll As Byte
+
+Sub Audit_Archive_Of_Selected_Mail_Parent_Folder()
+'for testing: choose the process you want to run on the parent folder of the selected mail
+'Useful for re-archiving the archive folders -- best to run this after hours
+Dim olMail As Outlook.MailItem
+Set olMail = GetCurrentItem()
+Call Audit_LoopItems(olMail.Parent.Items)
+End Sub
+
+Sub Audit_Archive_Of_Selected_Mail()
+'for testing: choose the process you want to run on the selected mail
+Dim olMail As Outlook.MailItem
+Set olMail = GetCurrentItem()
+Audit_COps olMail
+'Audit_Email_Process olMail
+End Sub
+
+Public Sub Audit_All_MailItems()
+'v3.45 2019-10-23 10:24 - removed P&C Insight from emails
+'v3.43 2019-04-10 12:58 - added lInsertCount and lUpdateCount for reporting succcess/failure
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.40 2019-04-10 08:30 - added external references
+'v3.38 2019-01-04 12:08 - Audit_COps: option to bypass Appointments when running overnight audit
+'v3.37 2019-01-03 14:43 - Audit_All_MailItems: sends Started email first
+'v3.36 2018-12-18 12:12 - Audit_All_MailItems: added pcopsvm@company.com to BCC
+'v3.04 2018-05-30 11:26 - Audit_All_MailItems: added timer and confirmation email
+'v3.02 2018-05-30 09:37 - Audit_All_MailItems: changed to loop through all folders
+'this is an alternative to using OL rules, may be faster
+
+lInsertCount = 0
+lUpdateCount = 0
+lLoggedCount = 0
+lFailedCount = 0
+
+Dim objNS As Outlook.NameSpace: Set objNS = GetNamespace("MAPI")
+Dim olFolder As Outlook.MAPIFolder
+Set olFolder = objNS.GetDefaultFolder(olFolderInbox)
+
+Dim t0 As Double, t1 As Double
+t0 = Now
+modEmail.SendEmail "COpsAuditLogs@company.com; cops@company.com; " & olFolder.Parent, , "pcinsightvm@company.com; pcopsvm@company.com", "COps Email Logging Started: " & olFolder.Parent
+Call Audit_LoopFolders(olFolder.Folders, True)
+t1 = Now
+Call olReminders.Relaunch_Appointments  'reset Appointment when done
+modEmail.SendEmail "COpsAuditLogs@company.com; cops@company.com; " & olFolder.Parent, , "pcinsightvm@company.com; pcopsvm@company.com", "COps Email Logging Completed: " & olFolder.Parent, "Time to run: " & Int((t1 - t0) * 24 * 60) & " mins" & vbLf & "Logged: " & lLoggedCount & vbLf & "Failed: " & lFailedCount
+lInsertCount = 0
+lUpdateCount = 0
+lLoggedCount = 0
+lFailedCount = 0
+End Sub
+
+Private Sub Audit_LoopFolders(olFolders As Outlook.Folders, ByVal Recursive As Boolean)
+'v3.38 2019-01-04 12:08 - Audit_COps: option to bypass Appointments when running overnight audit
+'v3.29 2018-09-03 14:30 - Audit_LoopFolders: fixed exclusion for Team Archive subfolder
+'v3.22 2018-08-20 16:22 - Audit_LoopFolders: added exclusion for Done Aged subfolder
+'v3.19 2018-08-17 17:23 - Audit_LoopFolders: adjusted folder exclusions list
+'v3.02 2018-05-30 09:37 - Audit_All_MailItems: changed to loop through all folders
+'http://www.vboffice.net/en/developers/looping-recursively-through-folders-and-subfolders/
+Dim olFolder As Outlook.MAPIFolder
+  For Each olFolder In olFolders
+  'add folder/subfolder exclusions here
+    If olFolder.Name = "Logging" Then                           'ignore these emails - not relevant
+    ElseIf olFolder.Name = "Archive" Then                       'Archive folder should no longer exist in Inboxes
+    ElseIf olFolder.Name = "Team Folders Archive" Then          'ignore these emails - not relevant to COps auditing
+    ElseIf Left(olFolder.Name, 10) = "Done Aged " Then          'Done Aged subfolders don't need auditing (NOTE: this needs to be forced when changing Audit logic)
+    Else ' for testing code: If olFolder.Name = "__Pending" Then
+  'process everything else
+        Debug.Print "Auditing folder: " & olFolder.Name
+        Call Audit_LoopItems(olFolder.Items)
+        If Recursive Then
+            Call Audit_LoopFolders(olFolder.Folders, Recursive)
+        End If
+    End If
+  Next
+End Sub
+
+Private Sub Audit_LoopItems(olItems As Outlook.Items)
+'v3.38 2019-01-04 12:08 - Audit_COps: option to bypass Appointments when running overnight audit
+'v3.28 2018-08-28 14:08 - Audit_LoopItems: sets bDoAll as Private variable, automates 1-by-1 or overnight audit
+'v3.02 2018-05-30 09:37 - Audit_All_MailItems: changed to loop through all folders
+'http://www.vboffice.net/en/developers/looping-recursively-through-folders-and-subfolders/
+
+'from Audit_COps:
+    'If bDoAll = 0 Then
+    '    dFirstDate = CDate(Now - 99) 'added this to save time in PQ logging, only updates recent emails, and moves them into a subfolder if they are older
+    'ElseIf bDoAll = 1 Then
+    '    dFirstDate = CDate("2018-04-01") 'updates all COps emails
+    'ElseIf bDoAll = 2 Then
+    '    dFirstDate = CDate(Now - 364)   'updates last 12 months emails
+    'End If
+bDoAll = 0  'default is 0, change this to 0/1/2 as required for refreshing archive appropriately
+  
+  Dim olItem As Object
+  For Each olItem In olItems
+    If TypeOf olItem Is Outlook.MailItem Then Call Audit_COps(olItem, True)   'log any changes and move old emails to the Archive subfolder
+  Next
+bDoAll = 0  'change this back for individual email updates
+End Sub
+
+Sub Audit_Rule_COps_Logging(ByRef olMail As MailItem)
+'v3.42 2019-04-10 08:50 - added Audit_Rule_COps_Logging to overcome possible issues with Rules
+Call Audit_COps(olMail, False)
+End Sub
+
+Sub Audit_COps(ByRef olMail As MailItem, Optional bBypassAppointments As Boolean = False)
+'v3.43 2019-04-10 12:58 - added lInsertCount and lUpdateCount for reporting succcess/failure
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.40 2019-04-10 08:30 - added external references
+'v3.38 2019-01-04 12:08 - Audit_COps: option to bypass Appointments when running overnight audit
+'v3.35 2018-11-07 17:00 - Audit_COps: bugfix: runs Audit_SQL_Inbox_Total after every *new* mail received - fixes unnecessary counting after every audit update
+'v3.33 2018-10-18 16:20 - Audit_COps: now runs Audit_SQL_Inbox_Total after every mail received
+'v3.31 2018-09-20 08:48 - Audit_COps: switched EmailAddress to EmailDomain (GDPR)
+'v3.28 2018-08-28 14:08 - Audit_LoopItems: sets bDoAll as Private variable, automates 1-by-1 or overnight audit
+'v3.26 2018-08-24 14:47 - Audit_SQL_Update: added sSenderEmail update
+'v3.25 2018-08-24 14:39 - Audit_COps: bugfix in Exchange headers, uses Email_Sender_Address
+'v3.23 2018-08-22 12:09 - Audit_COps: added Relaunch_Appointments to overcome issue with missed Appointments
+'v3.21 2018-08-20 16:02 - Audit_COps: commented out check for email Modified date because the logging process will modify it
+'v3.20 2018-08-17 17:31 - Audit_COps: reduced scope of full refresh, can manually override this setting to re-audit all emails after a logic change
+'v3.17 2018-08-15 16:40 - tweaked Audit_RegEx_Reservation
+'v3.10 2018-06-04 09:44 - added fn_MailboxAbbr
+'v3.07 2018-06-01 15:13 - Audit_COps: minor tweak, added dFirstDate
+'v3.06 2018-05-30 15:45 - Audit_COps: added iReservation to Update step
+'v3.05 2018-05-30 15:36 - added Audit_RegEx_Reservation and iReservation to Insert step
+'v3.03 2018-05-30 09:58 - added Select Case for the 3 inboxes, makes code common
+'v3.01 2018-05-29 20:15 - added bForceLogging option
+'v3.00 2018-05-29 18:44 - rewritten to use direct SQL inserts
+'                       - changed dSent to dSentOn
+'                       - removed sInbox, just refers sMailboxName and sMailboxAbbr
+'                       - formatting changes in code
+'                       - removed TXT logging code
+'                       - standardised code module & logging for all inboxes, updated rule
+'v2.02 2018-05-29 17:33 - added On Error Resume Next
+'v2.00 2018-04-05 11:37 - added Audit_COps for inboxes
+'flags the email as Logged, and adds/updates the details in SQL Server
+
+On Error GoTo ErrorDidNotLog    'added this to overcome random pauses
+
+Dim dFirstDate As Date
+If bDoAll = 0 Then  'bDoAll is set Private and controlled by Audit_LoopItems
+    dFirstDate = CDate(Now - 99) 'added this to save time in PQ logging, only updates recent emails, and moves them into a subfolder if they are older
+ElseIf bDoAll = 1 Then
+    dFirstDate = CDate("2018-04-01") 'updates all COps emails
+ElseIf bDoAll = 2 Then
+    dFirstDate = CDate(Now - 364)   'updates last 12 months emails
+End If
+
+Dim sMailboxAbbr As String
+sMailboxAbbr = fn_MailboxAbbr
+
+    Dim sSender As String, sSenderEmail As String, sSubject As String _
+        , dSentOn As Date, dLimit As Date, sCategories As String, sFolder As String, iReservation As Long _
+        , dModifiedDate As Date
+    
+    sSubject = Left(Replace(olMail.Subject, Chr(9), ""), 255)
+        If sSubject = "" Then sSubject = "blank"
+    sSender = Left(olMail.Sender, 255)
+        If sSender = "" Then sSender = "blank"
+    sSenderEmail = modEmail.Email_Sender_Address(olMail)
+        If InStr(sSenderEmail, "@") = 0 Then sSenderEmail = sSender & "@?"  'cleans up messy TJ mail headers from data
+        sSenderEmail = Mid(sSenderEmail, InStr(sSenderEmail, "@"), 255)  'limits to reasonable email sender column length and fixes for GDPR
+    dSentOn = olMail.SentOn     'timestamp
+    dLimit = dFirstDate 'Now - 364          'limit
+    If dSentOn < dLimit Then
+    'move it to Done Aged subfolder
+        Call olArchiver.olDoneAged(olMail)
+        Exit Sub
+    End If
+    sFolder = olMail.Parent
+    iReservation = Audit_RegEx_Reservation(olMail)
+'v3.21: commented this out as it might cause an endless loop by logging & modifying the email
+    'dModifiedDate = CDate(olMail.LastModificationTime)
+    'If dModifiedDate < dFirstDate Then GoTo ErrorDidNotLog
+    
+    'Body text doesn't store correctly, too long.  We need to extract with VBA.
+        'sBody = olMail.Body                         'stores text or HTML
+        'sBody = Replace(sBody, Chr(9), " //// ")
+        'sBody = Replace(sBody, Chr(10), " //// ")
+        'sBody = Replace(sBody, Chr(13), " //// ")
+    'Debug.Print sInbox
+    'Debug.Print sSender
+    'Debug.Print sSenderEmail
+    'Debug.Print dSentOn
+        'Debug.Print sBody
+
+'flag it as logged and record sCategories
+    Dim bLogged As Boolean
+    With olMail
+        sCategories = .Categories
+        If sCategories = "" Then
+        'no category, log it
+            sCategories = "Logged"
+        ElseIf InStr(sCategories, "Logged") = 0 Then
+        'not logged, log it
+            sCategories = sCategories & ", Logged"
+        ElseIf InStr(sCategories, "Logged, Logged") > 0 Then
+        'logged twice, remove the duplicate
+            sCategories = Replace(sCategories, "Logged, Logged", "Logged")
+            bLogged = True
+        Else
+        'logged once before
+            bLogged = True
+        End If
+        sCategories = Replace(sCategories, "'", "") 'enforced cleanup of Category names
+        .Categories = sCategories
+        .Save
+        If olMail.Saved = False Then GoTo ErrorDidNotLog
+    End With
+
+'to force logging, change the bForceLogging to True
+    If bForceLogging Then bLogged = False
+
+'add to SQL log, once saved with new Categories
+    If bLogged = False Then
+        Call Audit_SQL_Insert(sMailboxAbbr, sSubject, dSentOn, sSender, sSenderEmail, sCategories, sFolder, iReservation)
+        Call Audit_SQL_Inbox_Total      'log inbox count
+    Else
+        Call Audit_SQL_Update(sMailboxAbbr, sSubject, dSentOn, sSender, sSenderEmail, sCategories, sFolder, iReservation)
+    End If
+
+''add to TXT log (commented as replaced by SQL log, but left code in for future reference)
+'    Open logpth For Append As #1
+'    Write #1, sInbox & cSep & sSubject & cSep & sSender & cSep & sSenderEmail & cSep & dSentOn
+'    Close #1
+'    TextFile_FindReplace_Quotes logpth 'replace " with blanks to clean up file
+
+lLoggedCount = lLoggedCount + 1
+If bBypassAppointments = False Then Call Relaunch_Appointments      'added this to overcome missed Appointments problem
+Exit Sub
+
+ErrorDidNotLog:
+If bBypassAppointments = False Then Call Relaunch_Appointments      'added this to overcome missed Appointments problem
+End Sub
+
+Sub Audit_SQL_Insert(ByVal sInbox As String, ByVal sSubject As String, ByVal dSentOn As Date _
+    , ByVal sSender As String, ByVal sSenderEmail As String, ByVal sCategories As String _
+    , ByVal sFolder As String, ByVal iReservation As Long)
+'v3.43 2019-04-10 12:58 - added lInsertCount and lUpdateCount for reporting succcess/failure
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.27 2018-08-24 16:35 - Audit_SQL_Insert: added iReservation
+'v3.00 2018-05-29 17:03 - copied from Update_Audit_Table v2.04
+'inserts a new row for this email on the server
+'runs automatically as each email arrives and from Reminder task as catch-up
+
+'Const DoDebug = False  'True just displays code and doesn't do the update
+
+Dim t0 As Double, t1 As Double, t2 As Double
+
+t0 = Now
+
+Dim cnnstr As String, cnn As ADODB.Connection  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = New Connection
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=BI-01; " & _
+            "Initial Catalog=PandC_Sandpit;" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 5
+cnn.Open cnnstr
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sOwner As String, sReason As String, sPriority As String, sSentDate As String, sComments As String, sCreation_Date As String, sUsername As String, iReserv As Long
+sCreation_Date = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sSentDate = Format(dSentOn, "yyyy-mm-dd hh:nn:ss")
+
+    uSQL = "INSERT INTO " & olAuditTable & " " & vbLf & _
+            "   ([Inbox]            " & vbLf & _
+            "   ,[Subject]          " & vbLf & _
+            "   ,[SentDate]         " & vbLf & _
+            "   ,[Sender]           " & vbLf & _
+            "   ,[SenderEmail]      " & vbLf & _
+            "   ,[Categories]       " & vbLf & _
+            "   ,[Folder]           " & vbLf & _
+            "   ,[Reservation]      " & vbLf & _
+            "   ,[Creation_Date]    " & vbLf & _
+            "   ,[Modification_Date]" & vbLf & _
+            "   ,[HK_Audit]         " & vbLf & _
+            "   )" & vbLf & _
+            "VALUES" & vbLf & _
+            "   ('" & sInbox & "'           " & vbLf & _
+            "   ,'" & sSubject & "'         " & vbLf & _
+            "   ,'" & sSentDate & "'        " & vbLf & _
+            "   ,'" & sSender & "'          " & vbLf & _
+            "   ,'" & sSenderEmail & "'     " & vbLf & _
+            "   ,'" & sCategories & "'      " & vbLf & _
+            "   ,'" & sFolder & "'          " & vbLf & _
+            "   ,'" & iReservation & "'     " & vbLf & _
+            "   ,'" & sCreation_Date & "'   " & vbLf & _
+            "   ,'" & sCreation_Date & "'   " & vbLf & _
+            "   ,0)                         "
+
+    If DoDebug Then Debug.Print uSQL
+'only updates when Priority is changed from default AND Username matches submission
+'could maybe look at only updating comments if changed on same day as submission, but it's a minor improvement
+On Error GoTo ErrorDidNotLog
+    cnn.Execute uSQL
+    t1 = Now
+    t2 = Now
+
+    If DoDebug Then Debug.Print "Inserted 1 row: " & Format(t2 - t0, "hh:nn:ss")
+    lInsertCount = lInsertCount + 1
+    cnn.Close
+    Set cnn = Nothing
+On Error GoTo 0
+Exit Sub
+
+ErrorDidNotLog:
+lFailedCount = lFailedCount + 1
+End Sub
+
+Sub Audit_SQL_Update(ByVal sInbox As String, ByVal sSubject As String, ByVal dSentOn As Date _
+    , ByVal sSender As String, ByVal sSenderEmail As String, ByVal sCategories As String _
+    , ByVal sFolder As String, ByVal iReservation As Long)
+'v3.43 2019-04-10 12:58 - added lInsertCount and lUpdateCount for reporting succcess/failure
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.26 2018-08-24 14:47 - Audit_SQL_Update: added sSenderEmail update
+'v3.24 2018-08-22 17:01 - Audit_SQL_Update: bugfix in logic, wasn't updating anything
+'v3.06 2018-05-30 15:45 - Audit_SQL_Update: added iReservation to Update step
+'v3.00 2018-05-29 17:03 - copied from Update_Audit_Table v2.04
+'updates comments etc. on the server
+'runs automatically from Reminder task
+
+'Const DoDebug = False  'faster if False, if True can check code & timing in Immediate pane
+
+Dim t0 As Double, t1 As Double, t2 As Double
+
+t0 = Now
+
+Dim cnnstr As String, cnn As ADODB.Connection  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = New Connection
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=BI-01; " & _
+            "Initial Catalog=PandC_Sandpit;" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 5
+cnn.Open cnnstr
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sSentDate As String, sModification_date As String
+sModification_date = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sSentDate = Format(dSentOn, "yyyy-mm-dd hh:nn:ss")
+
+    uSQL = "UPDATE " & olAuditTable & "                              " & vbLf & _
+            "SET [Categories]         = '" & sCategories & "'        " & vbLf & _
+            "   ,[Folder]             = '" & sFolder & "'            " & vbLf & _
+            "   ,[SenderEmail]        = '" & sSenderEmail & "'       " & vbLf & _
+            "   ,[Reservation]        = '" & iReservation & "'       " & vbLf & _
+            "   ,[Modification_Date]  = '" & sModification_date & "' " & vbLf & _
+            "WHERE                                                   " & vbLf & _
+            "   ([Inbox]              = '" & sInbox & "'             " & vbLf & _
+            "AND [Subject]            = '" & sSubject & "'           " & vbLf & _
+            "AND [SentDate]           = '" & sSentDate & "'          " & vbLf & _
+            "AND [Sender]             = '" & sSender & "'            " & vbLf & _
+            "AND ([Categories]       <> '" & sCategories & "'        " & vbLf & _
+            "  OR [Folder]           <> '" & sFolder & "'            " & vbLf & _
+            "  OR [Reservation]      <> '" & iReservation & "'       " & vbLf & _
+            "  OR [SenderEmail]      <> '" & sSenderEmail & "'       " & vbLf & _
+            "  OR [Modification_Date]<> '" & sModification_date & "' " & vbLf & _
+            "  ))"
+            
+    If DoDebug Then Debug.Print uSQL
+'only updates when Priority is changed from default AND Username matches submission
+'could maybe look at only updating comments if changed on same day as submission, but it's a minor improvement
+On Error GoTo ErrorDidNotLog
+    cnn.Execute uSQL
+    t1 = Now
+    t2 = Now
+
+    If DoDebug Then Debug.Print "Updated 1 row: " & Format(t2 - t0, "hh:nn:ss")
+    lUpdateCount = lUpdateCount + 1
+    cnn.Close
+    Set cnn = Nothing
+On Error GoTo 0
+Exit Sub
+
+ErrorDidNotLog:
+lFailedCount = lFailedCount + 1
+End Sub
+
+Sub Audit_SQL_Inbox_Total()
+'v3.41 2019-04-10 08:33 - added lLoggedCount and lFailedCount for reporting succcess/failure
+'v3.34 2018-11-05 17:32 - Audit_SQL_Inbox_Total: added On Error Resume Next to prevent VBA hangups
+'v3.16 2018-07-03 17:32 - Audit_SQL_Inbox_Total: only 1 folder now for scanning
+'v3.15 2018-07-03 10:15 - Audit_SQL_Inbox_Total: added Debug.Print for oldest mail dates
+'v3.14 2018-06-25 17:24 - Audit_SQL_Inbox_Total: added extra folders for PQ
+'v3.13 2018-06-25 15:35 - Audit_SQL_Inbox_Total: added extra row for lag (oldest email)
+'v3.12 2018-06-12 14:42 - Audit_SQL_Inbox_Total: added errorhandler when failing to insert duplicate
+'v3.11 2018-06-04 14:11 - added Audit_SQL_Inbox_Total
+'inserts a new row for the Inbox count on the server
+'runs automatically as a Reminder task on a regular timer
+
+'Const DoDebug = True  'True bypasses logging and just displays the code
+
+'https://www.datanumen.com/blogs/quickly-get-total-count-items-folder-subfolders-via-outlook-vba/
+'counts emails currently in Inbox
+'do we need any exclusions by Category?
+
+    Dim objNS As Outlook.NameSpace: Set objNS = GetNamespace("MAPI")
+    Dim olFolder(0 To 3) As Outlook.MAPIFolder
+    Set olFolder(0) = objNS.GetDefaultFolder(olFolderInbox)
+    Dim lItemsCount As Long
+    Dim dOldestItem As Date
+    Dim iFolders As Integer, iFolder As Integer
+    Dim olItems As Outlook.Items, oldestMessage As Outlook.MailItem
+    
+    iFolders = 0    'just the inbox folder
+'    If olFolder(0).Parent = "ProductQuery@company.com" Then
+'        iFolders = 3
+'        Set olFolder(1) = olFolder(0).Folders("PQ Americas")
+'        Set olFolder(2) = olFolder(0).Folders("PQ Europe & Africa")
+'        Set olFolder(3) = olFolder(0).Folders("PQ ME & Australasia")
+'    Else
+'        iFolders = 0    'just the inbox folder
+'    End If
+    
+    'Initialize the total count
+    lItemsCount = 0
+    dOldestItem = Now
+On Error Resume Next  'v3.34
+    For iFolder = 0 To iFolders
+        lItemsCount = lItemsCount + olFolder(iFolder).Items.Count
+        
+        'https://stackoverflow.com/questions/25823139/find-the-oldest-email-in-inbox-outlook
+        'check the lag
+        Set olItems = olFolder(iFolder).Items
+        olItems.Sort "[ReceivedTime]", False
+        Set oldestMessage = olItems.GetFirst
+        If DoDebug Then Debug.Print "Oldest:  " & Format(dOldestItem, "yyyy-mm-dd hh:nn:ss")
+        If DoDebug Then Debug.Print "Testing: " & Format(oldestMessage.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+        If dOldestItem > oldestMessage.ReceivedTime Then dOldestItem = oldestMessage.ReceivedTime
+    Next iFolder
+On Error GoTo 0  'v3.34
+    
+Dim t0 As Double, t1 As Double, t2 As Double
+
+t0 = Now
+
+Dim cnnstr As String, cnn As ADODB.Connection  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = New Connection
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=BI-01; " & _
+            "Initial Catalog=PandC_Sandpit;" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 5
+cnn.Open cnnstr
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sInbox As String, sCategory As String, sRunDate As String, sCreation_Date As String, sLagDate As String
+sInbox = fn_MailboxAbbr
+sCategory = "Snapshot"
+sCreation_Date = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sRunDate = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sLagDate = Format(dOldestItem, "yyyy-mm-dd hh:nn:ss")
+
+    uSQL = "INSERT INTO " & olAuditCounts & " " & vbLf & _
+            "   ([Inbox]            " & vbLf & _
+            "   ,[Category]         " & vbLf & _
+            "   ,[RunDateTime]      " & vbLf & _
+            "   ,[OldestMail]       " & vbLf & _
+            "   ,[MailCount]        " & vbLf & _
+            "   )" & vbLf & _
+            "VALUES" & vbLf & _
+            "   ('" & sInbox & "'           " & vbLf & _
+            "   ,'" & sCategory & "'        " & vbLf & _
+            "   ,'" & sRunDate & "'         " & vbLf & _
+            "   ,'" & sLagDate & "'         " & vbLf & _
+            "   , " & lItemsCount & "       " & vbLf & _
+            "   )                           "
+
+    If DoDebug Then Debug.Print uSQL
+'only updates when Priority is changed from default AND Username matches submission
+'could maybe look at only updating comments if changed on same day as submission, but it's a minor improvement
+On Error GoTo ErrorDidNotLog
+    cnn.Execute uSQL
+    t1 = Now
+    t2 = Now
+
+If DoDebug Then Debug.Print "Inserted 1 row: " & Format(t2 - t0, "hh:nn:ss")
+
+    cnn.Close
+    Set cnn = Nothing
+    lLoggedCount = lLoggedCount + 1
+On Error GoTo 0
+Exit Sub
+
+ErrorDidNotLog:
+    lFailedCount = lFailedCount + 1
+End Sub
+
+Sub Audit_SQL_Inbox_Total_TEST()
+'v3.16 2018-07-03 17:32 - Audit_SQL_Inbox_Total: only 1 folder now for scanning
+'v3.15 2018-07-03 10:15 - Audit_SQL_Inbox_Total: added Debug.Print for oldest mail dates
+'v3.14 2018-06-25 17:24 - Audit_SQL_Inbox_Total: added extra folders for PQ
+'v3.13 2018-06-25 15:35 - Audit_SQL_Inbox_Total: added extra row for lag (oldest email)
+'v3.12 2018-06-12 14:42 - Audit_SQL_Inbox_Total: added errorhandler when failing to insert duplicate
+'v3.11 2018-06-04 14:11 - added Audit_SQL_Inbox_Total
+'inserts a new row for the Inbox count on the server
+'runs automatically as a Reminder task on a regular timer
+
+Const DoDebug = True  'True bypasses logging and just displays the code
+
+
+'https://www.datanumen.com/blogs/quickly-get-total-count-items-folder-subfolders-via-outlook-vba/
+'counts emails currently in Inbox
+'do we need any exclusions by Category?
+
+    Dim objNS As Outlook.NameSpace: Set objNS = GetNamespace("MAPI")
+    Dim olFolder(0 To 3) As Outlook.MAPIFolder
+    Set olFolder(0) = objNS.GetDefaultFolder(olFolderInbox)
+    Dim lItemsCount As Long
+    Dim dOldestItem As Date
+    Dim iFolders As Integer, iFolder As Integer
+    Dim olItems As Outlook.Items, oldestMessage As Outlook.MailItem
+    
+    iFolders = 0    'just the inbox folder
+'    If olFolder(0).Parent = "ProductQuery@company.com" Then
+'        iFolders = 3
+'        Set olFolder(1) = olFolder(0).Folders("PQ Americas")
+'        Set olFolder(2) = olFolder(0).Folders("PQ Europe & Africa")
+'        Set olFolder(3) = olFolder(0).Folders("PQ ME & Australasia")
+'    Else
+'        iFolders = 0    'just the inbox folder
+'    End If
+    
+    'Initialize the total count
+    lItemsCount = 0
+    dOldestItem = Now
+    For iFolder = 0 To iFolders
+        lItemsCount = lItemsCount + olFolder(iFolder).Items.Count
+        
+        'https://stackoverflow.com/questions/25823139/find-the-oldest-email-in-inbox-outlook
+        'check the lag
+        Set olItems = olFolder(iFolder).Items
+        olItems.Sort "[ReceivedTime]", False
+        Set oldestMessage = olItems.GetFirst
+        If DoDebug Then Debug.Print "Oldest:  " & Format(dOldestItem, "yyyy-mm-dd hh:nn:ss")
+        If DoDebug Then Debug.Print "Testing: " & Format(oldestMessage.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+        If dOldestItem > oldestMessage.ReceivedTime Then dOldestItem = oldestMessage.ReceivedTime
+    Next iFolder
+    
+Dim t0 As Double, t1 As Double, t2 As Double
+
+t0 = Now
+
+Dim cnnstr As String, cnn As ADODB.Connection  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = New Connection
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=BI-01; " & _
+            "Initial Catalog=PandC_Sandpit;" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 5
+cnn.Open cnnstr
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sInbox As String, sCategory As String, sRunDate As String, sCreation_Date As String, sLagDate As String
+sInbox = fn_MailboxAbbr
+sCategory = "Snapshot"
+sCreation_Date = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sRunDate = Format(Now, "yyyy-mm-dd hh:nn:ss")
+sLagDate = Format(dOldestItem, "yyyy-mm-dd hh:nn:ss")
+
+    uSQL = "INSERT INTO " & olAuditCounts & " " & vbLf & _
+            "   ([Inbox]            " & vbLf & _
+            "   ,[Category]         " & vbLf & _
+            "   ,[RunDateTime]      " & vbLf & _
+            "   ,[OldestMail]       " & vbLf & _
+            "   ,[MailCount]        " & vbLf & _
+            "   )" & vbLf & _
+            "VALUES" & vbLf & _
+            "   ('" & sInbox & "'           " & vbLf & _
+            "   ,'" & sCategory & "'        " & vbLf & _
+            "   ,'" & sRunDate & "'         " & vbLf & _
+            "   ,'" & sLagDate & "'         " & vbLf & _
+            "   , " & lItemsCount & "       " & vbLf & _
+            "   )                           "
+
+    If DoDebug Then Debug.Print uSQL
+'only updates when Priority is changed from default AND Username matches submission
+'could maybe look at only updating comments if changed on same day as submission, but it's a minor improvement
+On Error Resume Next
+    cnn.Execute uSQL
+    t1 = Now
+    t2 = Now
+
+If DoDebug Then Debug.Print "Inserted 1 row: " & Format(t2 - t0, "hh:nn:ss")
+
+cnn.Close
+Set cnn = Nothing
+
+End Sub
+
+Function fn_MailboxAbbr() As String
+'v3.10 2018-06-04 09:44 - added fn_MailboxAbbr
+Dim objNS As Outlook.NameSpace: Set objNS = GetNamespace("MAPI")
+Dim olFolder As Outlook.MAPIFolder
+Set olFolder = objNS.GetDefaultFolder(olFolderInbox)
+Select Case olFolder.Parent
+    Case "PriceMatch@company.com"
+        fn_MailboxAbbr = "PW"
+    Case "ProductQuery@company.com"
+        fn_MailboxAbbr = "PQ"
+    Case "StopSale@company.com"
+        fn_MailboxAbbr = "SS"
+End Select
+End Function
+
+Sub TextFile_FindReplace_Quotes(ByVal logpth As String)
+'PURPOSE: Modify Contents of a text file using Find/Replace
+'SOURCE: https://www.thespreadsheetguru.com/blog/vba-guide-text-files
+
+Dim TextFile As Integer
+Dim FilePath As String
+Dim FileContent As String
+
+'File Path of Text File
+  FilePath = logpth
+
+'Determine the next file number available for use by the FileOpen function
+  TextFile = FreeFile
+
+'Open the text file in a Read State
+  Open FilePath For Input As TextFile
+
+'Store file content inside a variable
+  FileContent = Input(LOF(TextFile), TextFile)
+
+'Clost Text File
+  Close TextFile
+  
+'Find/Replace
+  FileContent = Replace(FileContent, Chr(34), "")
+
+'Determine the next file number available for use by the FileOpen function
+  TextFile = FreeFile
+
+'Open the text file in a Write State
+  Open FilePath For Output As TextFile
+  
+'Write New Text data to file
+  Print #TextFile, FileContent
+
+'Close Text File
+  Close TextFile
+
+End Sub
+
+Function GetCurrentItem() As Object
+    Dim objApp As Outlook.Application
+            
+    Set objApp = Application
+    On Error Resume Next
+    Select Case TypeName(objApp.ActiveWindow)
+        Case "Explorer"
+            Set GetCurrentItem = objApp.ActiveExplorer.Selection.Item(1)
+        Case "Inspector"
+            Set GetCurrentItem = objApp.ActiveInspector.CurrentItem
+    End Select
+        
+    Set objApp = Nothing
+End Function
+
+Private Sub test_GetReport_Functions()
+Dim sExample As String
+sExample = "Report: " & Chr(34) & "M:\P&C\RT\PC Insight Reports\1 Trading Meetings\Trading Summary.xlsb" & Chr(34) & Chr(10) & "Microsoft Excel Version: 15.0 32-bit" & Chr(10) & "Tactical Increase tested"
+Debug.Print fn_GetReport_Path(sExample)
+Debug.Print fn_GetReport_File("M:\P&C\RT\PC Insight Reports\1 Trading Meetings\Trading Summary.xlsb")
+Debug.Print fn_GetReport_ExcelVer(sExample)
+Debug.Print fn_GetReport_Message(sExample)
+End Sub
+
+Function fn_GetReport_File(ByVal sReportPath As String) As String
+'looks in   "\\path\filename.xlsb"
+'result is  filename.xlsb
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+a = InStr(1, sReportPath, "\")
+If a = 0 Then Exit Function
+While a > 0
+    b = a + 1
+    a = InStr(b, sReportPath, "\")
+Wend
+s = Mid(sReportPath, b, Len(sReportPath))
+'MsgBox s
+fn_GetReport_File = s
+End Function
+
+Function fn_GetReport_Path(ByVal sMessageBody As String) As String
+'looks for  Report: "\\path\filename.xlsb"
+'result is  \\path\filename.xlsb
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+a = InStr(sMessageBody, "Report: " & Chr(34))
+If a = 0 Then Exit Function
+a = a + 9
+b = InStr(a, sMessageBody, Chr(34))
+s = Mid(sMessageBody, a, b - a)
+'MsgBox s
+fn_GetReport_Path = s
+End Function
+
+Function fn_GetReport_ExcelVer(ByVal sMessageBody As String) As String
+'looks for  Microsoft Excel Version:
+'result is  Microsoft Excel Version: NN.n NN-bit
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+Const sPrefix As String = "Microsoft Excel Version: "
+    a = InStr(sMessageBody, sPrefix)
+    If a = 0 Then Exit Function
+    b = a + Len(sPrefix) + 11  'where 11 = version, e.g. "14.0 64-bit"
+    s = Mid(sMessageBody, a, b - a)
+    'MsgBox s
+    s = Replace(s, "13.0", "2007")
+    s = Replace(s, "14.0", "2010")
+    s = Replace(s, "15.0", "2013")
+    s = Replace(s, "16.0", "2016")
+fn_GetReport_ExcelVer = Replace(s, vbLf, "")
+End Function
+
+Function fn_GetReport_Username(ByVal sMessageBody As String) As String
+'v1.04 2016-12-07 14:40 - added Username to logging
+'looks for  Username: abcdefg
+'result is  abcdefg
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+Const sPrefix As String = "Username: "
+    a = InStr(sMessageBody, sPrefix)
+    If a = 0 Then Exit Function
+    b = a + Len(sPrefix)
+    c = InStr(b, sMessageBody, vbLf)
+    If c = 0 Then c = Len(sMessageBody) + 1
+    s = Mid(sMessageBody, b, c - b)
+    'MsgBox s
+fn_GetReport_Username = Replace(s, vbLf, "")
+End Function
+
+Function fn_GetReport_AppUser(ByVal sMessageBody As String) As String
+'v1.05 2016-12-16 10:49 - added AppUser to logging
+'looks for  AppUser: abcdefg
+'result is  abcdefg
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+Const sPrefix As String = "AppUser: "
+    a = InStr(sMessageBody, sPrefix)
+    If a = 0 Then Exit Function
+    b = a + Len(sPrefix)
+    c = InStr(b, sMessageBody, vbLf)
+    If c = 0 Then c = Len(sMessageBody) + 1
+    s = Mid(sMessageBody, b, c - b)
+    'MsgBox s
+fn_GetReport_AppUser = Replace(s, vbLf, "")
+End Function
+
+Function fn_GetReport_Message(ByVal sMessageBody As String) As String
+'v1.05 2016-12-16 10:49 - added Message (was sNotes, but this stopped working) and AppUser to logging
+'looks for  Message: abcdefg
+'result is  abcdefg
+Dim s As String, a As Integer, b As Integer, c As Integer
+On Error Resume Next
+Const sPrefix As String = "Message: "
+    a = InStr(sMessageBody, sPrefix)
+    If a = 0 Then Exit Function
+    b = a + Len(sPrefix)
+    c = InStr(b, sMessageBody, vbLf)
+    If c = 0 Then c = Len(sMessageBody) + 1
+    s = Mid(sMessageBody, b, c - b)
+    'MsgBox s
+fn_GetReport_Message = Replace(s, vbLf, "")
+End Function
+
+Private Function Audit_Archive_Logged(Item As Outlook.MailItem) As Boolean
+'not currently in use
+Exit Function
+'puts email in "Logged" subfolder, marks read & flags complete
+
+Dim olApp As Outlook.Application
+'Set OlApp = CreateObject("Outlook.Application")
+Set olApp = Application
+
+Dim objNS As Outlook.NameSpace, objFolder As Outlook.MAPIFolder, ParentFolder As Outlook.MAPIFolder
+Set objNS = olApp.GetNamespace("MAPI")
+Set objFolder = objNS.Folders("pcinsightvm@company.com").Folders("Inbox").Folders("Audit Trail")
+
+Dim blnFolderCreated As Boolean
+
+Dim subj As String, s As Integer, olFolderName As String, CapturePrefix As String
+
+Dim oMail As Outlook.MailItem
+On Error GoTo SkipArchive
+Set oMail = Application.Session.GetItemFromID(Item.EntryID)
+On Error GoTo 0
+olFolderName = "Logged"
+
+Set ParentFolder = objFolder
+blnFolderCreated = OL_Create_objFolder(olFolderName, ParentFolder)
+If blnFolderCreated = True Then Set ParentFolder = Nothing
+Set objFolder = objFolder.Folders(olFolderName)
+
+Set oMail = Nothing
+
+'mark unread, flag complete, move to specified subfolder
+With Item
+On Error Resume Next
+    .UnRead = False
+    .FlagStatus = olFlagComplete
+    .Save
+    .Move objFolder  'on error, check whether blnFolderCreated is True/False, usually False means it already exists!
+On Error GoTo 0
+End With
+Audit_Archive_Logged = True
+SkipArchive:
+End Function
+
+Function OL_Create_objFolder(FolderName As String _
+    , Optional ParentFolder As Outlook.MAPIFolder) As Boolean
+'v2.11 2013-01-10 13:15
+
+Dim olOutlook As Outlook.Application
+
+On Error GoTo ErrorHandler
+Set olOutlook = Application
+'if using outside Outlook e.g. within Excel:
+'Set olOutlook = CreateObject("Outlook.Application")
+If ParentFolder Is Nothing Then
+    Dim ns As Outlook.NameSpace
+    Set ns = olOutlook.GetNamespace("MAPI")
+    Set ParentFolder = ns.GetDefaultFolder(olFolderInbox)
+End If
+ParentFolder.Folders.Add FolderName
+On Error GoTo 0
+
+Set olOutlook = Nothing
+Set ns = Nothing
+Set ParentFolder = Nothing
+
+OL_Create_objFolder = True
+Exit Function
+
+ErrorHandler:
+On Error GoTo 0
+OL_Create_objFolder = False
+
+End Function
+
+Sub test_mod_date()
+Dim olMail As Outlook.MailItem
+
+End Sub
+
+Function Audit_RegEx_Reservation(ByVal olMail As Object) As Long
+'v3.17 2018-08-15 16:40 - Audit_RegEx_Reservation: changed to use olMail object, improved validity check for res number
+'v3.05 2018-05-30 15:36 - Audit_RegEx_Reservation: first version
+'https://blogs.technet.microsoft.com/heyscriptingguy/2005/04/15/how-can-i-search-a-text-file-for-9-digit-numbers/
+
+Dim sSubject As String, sBodyText As String
+sSubject = olMail.Subject
+sBodyText = olMail.Body
+
+Dim objRegEx As Object
+Set objRegEx = CreateObject("VBScript.RegExp")
+objRegEx.Global = True
+objRegEx.Pattern = "\d{9}"  'finds the first 9 digit number, but it will also find a 10 digit number...
+
+Dim strSearchString As String, strMatch, colMatches
+
+'check the Subject first (more accurate)
+strSearchString = sSubject
+Set colMatches = objRegEx.Execute(strSearchString)
+If colMatches.Count > 0 Then
+   For Each strMatch In colMatches
+       Audit_RegEx_Reservation = strMatch.Value
+       If Audit_RegEx_Reservation >= 100000000 And Audit_RegEx_Reservation <= 999999999 Then Exit Function  '...so we restrict this to what looks like a reservation number
+   Next
+End If
+
+'check the Body (less accurate)
+strSearchString = sBodyText
+Set colMatches = objRegEx.Execute(strSearchString)
+If colMatches.Count > 0 Then
+   For Each strMatch In colMatches
+       Audit_RegEx_Reservation = strMatch.Value
+       If Audit_RegEx_Reservation >= 100000000 And Audit_RegEx_Reservation <= 999999999 Then Exit Function  '...so we restrict this to what looks like a reservation number
+   Next
+End If
+
+End Function
+
+Function test_Audit_Geo_Category(ByVal sBodyText As String, ByVal sCategories As String) As String
+'checks in order for PU Country, DO Country, and allocates a category (or categories) accordingly
+'we could just add a list of countries here and hard-code it...
+
+Dim sFindThis As String, a As Integer, b As Integer
+Dim sFindSep As String, sFindBrk As String
+Dim sCountry As String, sRegion As String
+
+'PW: "Pick Up Country     :"
+sFindThis = "Pick Up Country"
+a = 0
+b = 0
+a = InStr(sBodyText, sFindThis)
+If a > 0 Then
+    sFindSep = ":"
+    a = InStr(a + 1, sBodyText, sFindSep)  'start character before Country name
+    sFindBrk = vbLf
+    b = InStr(a + 1, sBodyText, sFindBrk)  'end character after Country name (e.g. line break)
+    'test_Audit_Geo_Category =
+    test_Audit_Geo_Category = Mid(sBodyText, a + 1, b - a - 2)  '-2 excludes the line break
+    If sCategories = "" Then
+    'no category applied, set it to the country
+        sCategories = sCountry
+    ElseIf InStr(sCategories, test_Audit_Geo_Category) = 0 Then
+    'country category not applied, add the country
+        sCategories = sCategories & ", " & sCountry
+    End If
+End If
+
+'PW: "Drop Off Country    :"
+sFindThis = "Drop Off Country"
+a = 0
+b = 0
+a = InStr(sBodyText, sFindThis)
+If a > 0 Then
+    sFindSep = ":"
+    a = InStr(a + 1, sBodyText, sFindSep)  'start character before Country name
+    sFindBrk = vbLf
+    b = InStr(a + 1, sBodyText, sFindBrk)  'end character after Country name (e.g. line break)
+    'test_Audit_Geo_Category =
+    test_Audit_Geo_Category = Mid(sBodyText, a + 1, b - a - 2)  '-2 excludes the line break
+    If sCategories = "" Then
+    'no category applied, set it to the country
+        sCategories = sCountry
+    ElseIf InStr(sCategories, test_Audit_Geo_Category) = 0 Then
+    'country category not applied, add the country
+        sCategories = sCategories & ", " & sCountry
+    End If
+End If
+End Function

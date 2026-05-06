@@ -1,0 +1,359 @@
+Attribute VB_Name = "xlAudit"
+Option Explicit
+Option Compare Text
+
+'Version History:
+Public Const xlAuditCodeVer As String = _
+"xlAudit v2.06a" 'v2.06a 2020-10-23 08:45 - merged forked modFile and modFile_FSO modules
+'v2.06 2019-03-22 11:54 - removed sPathYDrive and updated to sPathMDrive & "P&C\"
+'v2.05 2019-03-22 09:19 - sPathMDrive added to exclusions
+'v2.04 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v2.03 2019-01-16 14:28 - updated P&C share path to Group Data
+'v2.02 2018-03-26 21:40 - bugfix for v2.01
+'v2.01 2018-03-26 13:54 - updated share path rcfs to BackOffice, added sPathYDrive, renamed sLogPath
+'v2.00 2017-02-23 14:49 - added TXT_Schedule: adapted from TXT_Audit
+'v1.03 2017-08-03 12:32 - errorhandler for network connectivity, added P: remap
+'v1.02 2017-05-25 08:44 - proper binding to modEmail
+'v1.01 2017-02-24 07:06 - errorhandlers
+'v1.00 2017-02-23 14:49 - xlAudit: adapted from modEmail v11.11 and modAuto v4.45
+
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+Private Const sPathLogging As String = "\\company.local\Group Data\P&C\RT\Automation\Logging\TXT\" 'must be writeable for report users
+Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As LongPtr) 'For 64 Bit Systems
+
+'===========================================================================
+' HELP CONTACT
+'===========================================================================
+' Code is provided without warranty and can be stolen and amended as required.
+' RC Help Contact:
+'   [redacted]
+'   recipient@company.com
+'=========================================================================
+
+'===========================================================================
+' xlAudit
+'===========================================================================
+'   Routines for logging usage and archiving logs.
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   modEmail v11.11 or later
+
+'===========================================================================
+' Additional References required:
+'===========================================================================
+'   None
+
+'===========================================================================
+' External applications required:
+'===========================================================================
+'   None
+
+Public Function xlAuditVer() As String
+xlAuditVer = xlAuditCodeVer
+End Function
+
+Sub TXT_Audit(Optional ByVal Extra_Message As String)
+'v2.06 2019-03-22 11:54 - removed sPathYDrive and updated to sPathMDrive & "P&C\"
+'v2.05 2019-03-22 09:19 - sPathMDrive added to exclusions
+'v2.03 2019-01-16 14:28 - updated P&C share path to Group Data
+'v2.01 2018-03-26 13:54 - updated share path rcfs to BackOffice
+'v1.03 2017-08-03 12:32 - errorhandler for network connectivity, added P: remap
+'v1.02 2017-05-25 08:44 - proper binding to modEmail
+'v1.01 2017-02-24 07:06 - errorhandlers
+'v1.00 2017-02-23 14:49 - TXT_Audit: adapted from modEmail and modAuto v4.45
+'adds 1 line of audit to a text logfile
+'creates a new logfile first if it doesn't already exist
+'overnight process loads all text logfiles into Access archive accdb ready for reporting (or upload into SQL later)
+
+On Error Resume Next    'mostly prevents errors with Dir() command with bad network access
+
+Dim sEmail As String, sUsername As String, sUserInfo As String, sAppUser As String, sAppInfo As String, sComputerID As String, sMessage As String
+Dim sPath As String, sFile As String, sCode As String
+
+'check for admin user(s)
+sUsername = Environ("Username")
+If InStr(modEmail.cIgnoreAuditEmailsForTheseUsers, sUsername) > 0 Then Exit Sub
+
+'check for standard exclusions
+sPath = ThisWorkbook.Path & "\"
+sPath = Replace(sPath, "Y:\", sPathMDrive & "P&C\")
+sPath = Replace(sPath, "M:\", sPathMDrive)
+sPath = Replace(sPath, "P:\", "\\company.com\Group Data\Company\")
+sPath = Replace(sPath, "X:\", "\\company.com\Group Data\Company\")
+sPath = Replace(sPath, "\\company.com\rcfs\users\" & sUserInfo & "\", "Z:\")
+sPath = Replace(sPath, ",", "")
+If InStr(sPath, "\TEST\") > 0 Then Exit Sub     'test files
+sFile = ThisWorkbook.Name
+If InStr(sFile, "(version ") > 0 Then Exit Sub  'autosaved/recovered files
+If InStr(sFile, "(master)") > 0 Then Exit Sub   'master files
+If InStr(sFile, "(TEST)") > 0 Then Exit Sub     'test files
+
+'get user details
+sAppInfo = fn_AppInfo
+sComputerID = Environ("computername")
+'for user-editable settings, replace all commas with blanks
+sAppUser = Replace(Application.UserName, ",", "")
+sUserInfo = Replace(sUsername, ",", "")
+sMessage = Replace(Extra_Message, ",", " - ")
+sEmail = modEmail.cDefaultEmail
+
+'define audit log headers and row to be logged
+Dim sNetTest As String, sLogFile As String, sLogHead As String, sLogLine As String, cs As String, cm As String, iSleepTime As Long
+cs = ""","""
+cm = Chr(34)
+sNetTest = sPathMDrive & "P&C\"
+sLogFile = sPathMDrive & "P&C\RT\Automation\Logging\TXT\" & sUsername & ".auditlog"
+sLogHead = cm & "DateTime" & cs & "Sender" & cs & "Username" & cs & "AppUser" & cs & "Report Path" & cs & "Report File" & cs & "Excel Version" & cs & "Other Notes" & cm
+sLogLine = cm & Format(Now, "yyyy-mm-dd hh:nn:ss") & cs & sEmail & cs & sUserInfo & cs & sAppUser & cs & sPath & cs & sFile & cs & sAppInfo & cs & sMessage & cm
+
+'add to log
+If Dir(sNetTest) = "" Then
+'checks network access, sends the log by email if not available
+    GoTo EmailAudit
+Else
+'On Error Resume Next
+'check if audit log file exists for this user
+    Dim t0 As Long, t1 As Long  'time in ms
+    t0 = Now
+    If Dir(sLogFile) = "" Then
+    'create a new log file for this user then pause momentarily to allow network disk writes to complete before adding log line
+        'Debug.Print sLogHead
+        If TXT_Audit_Write_FSO(sLogFile, sLogHead, False) = False Then GoTo EmailAudit
+        iSleepTime = FileLen(sLogFile) '1ms per byte.  / 1024?
+        Sleep iSleepTime * 10
+        Debug.Print iSleepTime & "ms pause to create new log"
+    End If
+'add to the log file for this user
+    'Debug.Print sLogLine
+    If TXT_Audit_Write_FSO(sLogFile, sLogLine, True) = False Then GoTo EmailAudit
+    t1 = Now
+    Debug.Print Int((t1 - t0) * 24 * 60 * 60 * 1000 * 1000) / 1000 & "ms to add to log"
+End If
+Exit Sub
+EmailAudit:
+    modEmail.SendEmail modEmail.cTriggerEmailTo, , , "Audit Trail v2" _
+        , sLogHead & vbLf & sLogLine, , , , , , , , , , True
+End Sub
+
+Sub TXT_Schedule(ByVal dUpdateStarted As Double, ByVal dUpdateFinished As Double _
+    , ByVal dPublishStarted As Double, ByVal dPublishFinished As Double _
+    , ByVal bSuccess As Byte)
+'v2.06 2019-03-22 11:54 - removed sPathYDrive and updated to sPathMDrive & "P&C\"
+'v2.05 2019-03-22 09:19 - sPathMDrive added to exclusions
+'v2.04 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'v2.03 2019-01-16 14:28 - updated P&C share path to Group Data
+'v2.01 2018-03-26 13:54 - updated share path rcfs to BackOffice
+'v2.00 2017-02-23 14:49 - TXT_Schedule: adapted from TXT_Audit
+'adds 1 line of schedule result to a text logfile, this is called from modAuto.auto_Publish routine
+'creates a new logfile first if it doesn't already exist
+'overnight process loads all text logfiles into Access archive accdb ready for reporting (or upload into SQL later)
+
+On Error Resume Next    'mostly prevents errors with Dir() command with bad network access
+
+Dim sUsername As String, sUserInfo As String, sAppInfo As String, sComputerID As String 'sEmail As String, sAppUser As String, sMessage As String
+Dim sPath As String, sFile As String, sCode As String
+
+'check for admin user(s)
+'v2.04 2019-03-22 09:13 - Check_Access_Control: removed, no longer needed because masters are secure
+'sUsername = Environ("Username")
+'If modAuto.Check_Access_Control = 0 Then Exit Sub
+
+'check for standard exclusions
+sPath = ThisWorkbook.Path & "\"
+sPath = Replace(sPath, "Y:\", sPathMDrive & "P&C\")
+sPath = Replace(sPath, "M:\", sPathMDrive)
+sPath = Replace(sPath, "P:\", "\\company.com\Back Office\Company\")
+sPath = Replace(sPath, "X:\", "\\company.com\Back Office\Company\")
+sPath = Replace(sPath, "\\company.com\rcfs\users\" & sUserInfo & "\", "Z:\")
+sPath = Replace(sPath, ",", "")
+If InStr(sPath, "\TEST\") > 0 Then Exit Sub     'test files
+sFile = ThisWorkbook.Name
+If InStr(sFile, "(master)") = 0 Then Exit Sub   'master files ONLY
+If InStr(sFile, ".xlsb") = 0 Then Exit Sub      '.xlsb files ONLY
+If InStr(sFile, "(version ") > 0 Then Exit Sub  'autosaved/recovered files
+If InStr(sFile, "(TEST)") > 0 Then Exit Sub     'test files
+
+'get user details
+sAppInfo = fn_AppInfo
+sComputerID = Environ("computername")
+'for user-editable settings, replace all commas with blanks
+'sAppUser = Replace(Application.UserName, ",", "")
+sUserInfo = Replace(sUsername, ",", "")
+'sEmail = modEmail.cDefaultEmail
+
+'define audit log headers and row to be logged
+Dim sNetTest As String, sLogFile As String, sLogHead As String, sLogLine As String, cs As String, cm As String, iSleepTime As Long
+cs = ""","""
+cm = Chr(34)
+sNetTest = sPathMDrive & "P&C\"
+sLogFile = sPathMDrive & "P&C\RT\Automation\Logging\TXT\" & Replace(sFile, ".xlsb", ".schedulelog")
+sLogHead = cm & "ComputerName" & cs & "Update_Started" & cs & "Update_Finished" & cs & "Publish_Started" & cs & "Publish_Finished" & cs _
+    & "Username" & cs & "Report Path" & cs & "Report File" & cs & "Excel Version" & cs & "Success" & cm
+sLogLine = cm & sComputerID & cs & Format(dUpdateStarted, "yyyy-mm-dd hh:nn:ss") & cs & Format(dUpdateFinished, "yyyy-mm-dd hh:nn:ss") & cs & Format(dPublishStarted, "yyyy-mm-dd hh:nn:ss") & cs & Format(dPublishFinished, "yyyy-mm-dd hh:nn:ss") & cs _
+    & sUserInfo & cs & sPath & cs & sFile & cs & sAppInfo & cs & bSuccess & cm
+
+'add to log
+If Dir(sNetTest) = "" Then
+'checks network access, sends the log by email if not available
+    GoTo EmailAudit
+Else
+'On Error Resume Next
+'check if audit log file exists for this user
+    Dim t0 As Long, t1 As Long  'time in ms
+    t0 = Now
+    If Dir(sLogFile) = "" Then
+    'create a new log file for this user then pause momentarily to allow network disk writes to complete before adding log line
+        'Debug.Print sLogHead
+        If TXT_Audit_Write_FSO(sLogFile, sLogHead, False) = False Then GoTo EmailAudit
+        iSleepTime = FileLen(sLogFile) '1ms per byte.  / 1024?
+        Sleep iSleepTime * 10
+        Debug.Print iSleepTime & "ms pause to create new log"
+    End If
+'add to the log file for this user
+    'Debug.Print sLogLine
+    If TXT_Audit_Write_FSO(sLogFile, sLogLine, True) = False Then GoTo EmailAudit
+    t1 = Now
+    Debug.Print Int((t1 - t0) * 24 * 60 * 60 * 1000 * 1000) / 1000 & "ms to add to log"
+End If
+Exit Sub
+EmailAudit:  'not used, network access is implied
+'    modEmail.SendEmail modEmail.cTriggerEmailTo, , , "Schedule Log v1" _
+'        , sLogHead & vbLf & sLogLine, , , , , , , , , , True
+End Sub
+
+Private Function TXT_Audit_Write_FSO(ByVal sFileToAdd As String, ByVal sTextToAdd As String, ByVal bAppend As Boolean) As Boolean
+'v1.01 2017-02-24 07:06 - errorhandlers, now a function
+'v1.00 2017-02-23 14:49 - TXT_Audit: adapted from modEmail and modAuto v4.45
+'v4.43 2017-02-22 17:56 - added TXT_Audit_Write_FSO
+
+'source:
+'https://social.technet.microsoft.com/Forums/scriptcenter/en-US/19ae0303-5b01-44ce-95a7-d18306f53ff0/vbscript-output-to-file?forum=ITCG
+'http://stackoverflow.com/questions/30478983/append-text-to-text-file-if-it-already-exists
+
+On Error GoTo NoWriteAccess
+Dim objFSO As Object, objFile As Object
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+If Not bAppend Then
+'create new file
+    Set objFile = objFSO.CreateTextFile(sFileToAdd, True)
+Else
+'append to existing file
+    SetAttr sFileToAdd, vbNormal
+    Set objFile = objFSO.OpenTextFile(sFileToAdd, 8)
+End If
+objFile.WriteLine sTextToAdd
+objFile.Close
+SetAttr sFileToAdd, vbReadOnly
+TXT_Audit_Write_FSO = True
+NoWriteAccess:
+End Function
+
+Function fn_AppInfo() As String
+'v1.00 2017-02-23 14:49 - TXT_Audit: adapted from modEmail and modAuto v4.45
+'v4.46 2017-02-23 14:39 - added fn_AppInfo to convert app version number into real name
+'result is  Microsoft Excel Version: NNNN NN-bit
+
+'find 64/32 bit Excel
+Dim bIs64Bit As Boolean, s As String
+#If Win64 Then
+    bIs64Bit = True
+#End If
+s = Replace(Application.Name & " Version: " & Application.Version, ",", "")
+If bIs64Bit Then s = s & " 64-bit" Else s = s & " 32-bit"
+s = Replace(s, "13.0", "2007")
+s = Replace(s, "14.0", "2010")
+s = Replace(s, "15.0", "2013")
+s = Replace(s, "16.0", "2016")
+
+fn_AppInfo = Replace(s, vbLf, "")
+End Function
+
+Sub xlA_Append_All_Logfiles_Into_Access()
+'ALPHA: runs Access, launches the process
+Const sDBpath As String = ""
+Const sDBfn As String = ""
+Const sDBmacro As String = ""
+'modAppsOffice.run_Access sDBpath, sDBfn, sDBmacro
+End Sub
+
+Sub xlA_do_Archive()
+'old process - this is now handled entirely within Access DB
+Const dDays As Integer = 35
+Const pthfnA As String = sPathMDrive & "P&C\RT\Automation\Logging\Report Trail Archive.xlsb"
+Dim rToArchive As Range, rThis As Range
+Dim dToday As Date, dOldest As Date, dThis As Date
+dToday = Int(Now)
+dOldest = dToday - dDays
+Set rToArchive = ThisWorkbook.Sheets("RawData").Cells(2, 1)
+Set rThis = rToArchive
+dThis = Int(rThis)
+While dThis < dOldest
+    Set rThis = rThis.Offset(1)
+    dThis = Int(rThis)
+Wend
+'Application.Goto rThis
+Set rToArchive = ThisWorkbook.Sheets("RawData").Range(rToArchive, rThis.Offset(-1)).EntireRow
+'Application.Goto rToArchive
+If rToArchive.Rows.Count > 100 Then   '100 is just a big safety margin to prevent unnecessary archiving
+    Dim wbArch As Workbook
+    Set wbArch = Workbooks.Open(pthfnA)
+CopyAgain:
+    If wbArch Is Nothing Then
+        modEmail.SendEmail "recipient@company.com", , , "Audit Archive Failed: couldn't open Analysis file"
+        Exit Sub
+    End If
+    rToArchive.Copy
+    If Application.CutCopyMode = False Then GoTo CopyAgain
+    wbArch.Sheets("Archive").Cells(1).End(xlDown).Offset(1).PasteSpecial xlPasteValues
+    Application.CutCopyMode = False
+    wbArch.Close True
+    rToArchive.Delete
+End If
+End Sub
+
+'Sub xlA_TEST_Copy_All_Logfiles_Into_This_Workbook()
+''this isn't used, we do it all within Access now
+'
+'Dim sPathLoggingfn As String
+''sPathLoggingfn = sPathLogging &
+'
+'Dim wbSrc As Workbook, wsTgt As Worksheet, rCopy As Range, rPaste As Range
+'Dim iCols As Integer, iRows As Integer
+'
+'Set wsTgt = ThisWorkbook.Sheets("Audit Log")
+'
+''copied from modFile.LoopThroughFiles_Example()
+''source: http://stackoverflow.com/questions/10380312/loop-through-files-in-a-folder-using-vba
+''requires Reference to Microsoft Scripting Runtime enabled
+'Dim MyObj As Object, MySource As Object, MyFile As Variant
+'    Set MyObj = CreateObject("Scripting.FileSystemObject")
+'    Set MySource = MyObj.GetFolder(sPathLogging)
+'    For Each MyFile In MySource.Files
+'    'open read-only workbook
+'        Workbooks.OpenText FileName:=MyFile.Path _
+'            , Origin:=437, StartRow:=1, DataType:=xlDelimited, TextQualifier:=xlDoubleQuote _
+'            , Comma:=True, Tab:=False, Semicolon:=False, Space:=False, Other:=False, ConsecutiveDelimiter:=False _
+'            , FieldInfo:=Array(Array(1, 5), Array(2, 2), Array(3, 2), Array(4, 2), Array(5, 2), Array(6, 2), Array(7, 2), Array(8, 2)) _
+'            , TrailingMinusNumbers:=True
+'        Set wbSrc = Workbooks(MyFile.Name)
+'    'immediately delete it once opened (since we are going to log this data)
+'        'setattr myfile.path, vbnormal
+'        'kill myfile.path
+'    'copy the data into the full log
+'        With wbSrc.Sheets(1)
+'            iCols = Application.CountA(.Rows(1))
+'            iRows = Application.CountA(.Columns(1))  'ignore the header row
+'            Set rCopy = .Range(.Cells(2, 1), .Cells(iRows, iCols))
+'            Set rPaste = wsTgt.Cells(1, 1)
+'            If rPaste.Offset(1) = "" Then Set rPaste = rPaste.Offset(1) Else Set rPaste = rPaste.End(xlDown).Offset(1)
+'CopyItAgain:
+'            rCopy.Copy
+'            rPaste.PasteSpecial xlPasteValues
+'            If Application.CutCopyMode = False Then GoTo CopyItAgain Else Application.CutCopyMode = False
+'        End With
+'    Next MyFile
+'
+'
+'End Sub

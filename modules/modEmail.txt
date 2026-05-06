@@ -1,0 +1,1086 @@
+Attribute VB_Name = "modEmail"
+Option Explicit
+Option Compare Text
+
+'*****************************************************
+'*****  WARNING: SETTINGS BELOW MUST BE AMENDED  *****
+'*****************************************************
+
+'Version History:
+Public Const modEmailCodeVer As String = _
+"modEmail v13.17"
+'v13.17 2020-11-12 16:46 - SendEmail & Email_via_CDO: improved Debug.Print message for testing
+'v13.16 2020-11-12 15:17 - SendEmail: added %HTMLTABLE1% thru 6
+'v13.15 2020-11-05 17:18 - added example code for admin_Email to bottom of module
+'v13.14 2020-11-05 15:32 - replaced cAdminEmailTo and cTriggerEmailTo with Functions to work with multiple automation accounts
+'v13.13 2020-11-05 15:25 - fn_replace_report_links: switched to sPathMDrive from sPathYDrive
+'v13.12 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v13.11 2019-09-23 10:12 - SendEmail: bugfix, prevents double-addition of sCodeVer
+'v13.10 2019-01-22 08:03 - Email_Audit: changed VM7 to VM2 in comments
+'v13.09 2019-01-16 14:27 - updated P&C share to Group Data
+'v13.08 2019-01-10 14:26 - bugfix: commented code in test_send_html to prevent debug errors
+'v13.07 2019-01-02 12:10 - added Email_Save_Chart_As_Image function
+'v13.06 2018-12-10 16:26 - SendEmail: switched failure message to CDO
+'v13.05 2018-12-08 17:11 - SendEmail: added Debug messages
+'v13.04 2018-12-08 17:01 - SendEmail: bugfix: uses CDO if all else fails, but bypasses it for pcinsightvm
+'v13.03 2018-11-27 13:25 - Email_via_CDO: improved Debug.Print messages for testing
+'v13.02 2018-11-26 18:24 - SendEmail: bugfix: workaround for Outlook being offline, uses CDO and sends from pcinsightvm
+'v13.01 2018-08-24 15:09 - Email_Sender_Address: bugfix, late binding
+'v13.00 2018-08-24 13:49 - added Email_Sender_Address function
+'v12.01 2018-07-03 18:13 - allows up to 6 Images embedded
+'v12.00 2018-06-29 12:48 - allows embedding of images in HTML: https://excel-macro.tutorialhorizon.com/excel-vba-send-mail-with-embedded-image-in-message-body-from-ms-outlook-using-excel/
+'                        - replaces %HTMLIMAGE1% in the HTML body text with the image from ImagePath1
+'v11.25 2018-05-22 11:06 - RangetoHTML: bugfix: see https://stackoverflow.com/questions/40836626/application-defined-error
+'v11.24 2018-05-21 10:49 - RangetoHTML: bugfix: added ErrorHandler to routine, fixes stray Excel windows
+'v11.23 2018-05-08 12:23 - formatted link to file in CodeVer as HTML
+'v11.22 2018-04-24 14:26 - Outlook_Clean_Emails: added AlsoSeparate
+'v11.21 2018-04-23 09:23 - changed Excel application check
+'v11.20 2018-04-23 09:20 - added ThisWorkbook.FullName to sCodeVer
+'v11.19 2018-04-23 09:06 - RangetoHTML: changed temp file name
+'v11.18 2018-03-26 15:02 - added sPathYDrive
+'v11.17 2017-10-02 10:30 - changed Environ("Username") to CreateObject("WScript.Network").UserName
+'v11.16 2017-08-04 08:51 - RangetoHTML: minor improvements to code
+'v11.15 2017-08-04 07:59 - RangetoHTML: swapped enumerator for xlPasteColumnWidths, added bASU and iAC, added errorhandler, defined As String
+'v11.14 2017-07-06 11:03 - RangetoHTML: minor improvement to code
+'v11.13 2017-06-12 09:07 - bugfix
+'v11.12 2017-06-06 13:22 - late binding to Excel for username (still needs Excel Reference added)
+'v11.11 2017-01-31 14:17 - Email_via_CDO: changed mail.company.com to IP address
+'v11.10 2017-01-24 10:06 - replaced deprecated modEmailVer with modEmailCodeVer throughout module
+'v11.09 2017-01-17 11:13 - added BypassSentItems to options (default is True)
+'v11.08 2016-12-16 11:00 - bugfix in sending no attachments by CDO
+'v11.07 2016-12-16 10:05 - added Application.Username to standard email format (not logged, just for info)
+'v11.06 2016-12-07 12:55 - added username to standard email format
+'v11.05 2016-11-10 10:49 - added cBlackHoleEmailTo for testing emails
+'v11.04 2016-11-07 15:12 - bypass logging for admin user(s)
+'v11.03 2016-11-01 09:57 - Email_via_CDO: added Attachments
+'v11.02 2016-11-01 09:28 - Email_via_CDO: attempted bugfix, Application.DisplayAlerts
+'v11.01 2016-10-31 10:04 - added Environ("computername") to emails (when BypassVersionNumber = False)
+'v11.00 2016-10-20 14:39 - Outlook_Clean_Emails() first version
+'v10.03 2016-09-20 14:39 - set SendOnBehalfOf to default email (unless mailbox name isn't this user's email address)
+'v10.02 2016-09-20 14:05 - set ReplyTo to default email (unless mailbox name isn't this user's email address)
+'v10.01 2016-09-16 09:30 - added default email constants and error capture for Email_CDO where user's mailbox cannot provide their email address
+'v10.00 2016-07-19 16:33 - added Application.Version to Email_Audit
+'v9.03 2016-06-14 12:51 - option to exclude Version Number from output email
+'v9.02 2016-06-10 11:36 - bugfix for sending, checks that Reply-To address is valid, warning if not
+'v9.01 2016-06-10 10:30 - default Email_ReplyTo set for pcinsightvm
+'v9.00 2016-06-10 12:08 - added Email_ReplyTo
+'v8.02 2016-05-04 16:34 - moved Options to top, added modEmailVer
+'v8.01 2016-04-13 17:39 - added modEmailCodeVer
+'v8.00 2016-04-08 12:35 - fn_replace_report_links: replaces "link%20%to%20file" in HTML
+'v7.01 2016-02-08 12:08 - bugfix for Email_CDO routine
+'v7.00 2016-02-05 15:21 - added Email_Audit
+'v6.00 2016-02-05 13:33 - added Email_via_CDO
+'v5.01 2016-02-05 12:48 - added Application.ScreenUpdating
+'v5.00 2016-02-04 09:52 - added RangetoHTML
+'v4.01 2015-11-24 11:49 - bugfix for Resume loop
+'v4.00 2015-07-31 16:42 - added send as HTML
+'v3.02 2014-09-16 11:21 - improved Attachments failures and sends error to default email address
+'v3.01 2014-09-08 11:49 - bugfix for default user in multiple Outlook sessions, only works in Outlook, won't work correctly from other apps as it will always take the user from the LAST opened Outlook session
+'v3.00 2014-09-05 11:42 - cDefaultEmail as function, now taken from mailbox
+'v2.01 2014-09-01 21:03 - bugfix for %20 HTML error
+'v2.00 2014-03-03 09:51 - now can Email_SendOnBehalfOf (uses cDefaultEmail, if blank)
+'v1.10   added eMaxAttSize (10MB)
+'v1.09   bugfix - AttachmentPaths as string <> ""
+'v1.08   bugfix - dim AttachmentPaths as string
+'v1.07   up to 3 attachments
+'v1.06   bugfix - multiple To/CC/BCC didn't resolve if separated by ";"
+'v1.05   bugfix - multiple To/CC/BCC recipients didn't resolve
+'v1.04   bugfix - upgrade advised
+'v1.03   bugfix - upgrade essential
+'v1.02a  annotations only
+'v1.02   added cDefaultEmail
+'v1.01   late bound references
+'v1.00   SendEmail: code adapted from original source
+'        http://support.microsoft.com/kb/161088
+
+
+'===========================================================================
+' HELP CONTACT
+'===========================================================================
+' Code is provided without warranty and can be stolen and amended as required.
+' RC Help Contact:
+'   [redacted]
+'   recipient@company.com
+'=========================================================================
+
+'===========================================================================
+' modEmail
+'===========================================================================
+'   Routines for sending emails.
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   None
+
+'===========================================================================
+' Additional References required:
+'===========================================================================
+'   Microsoft Excel Object Library (if not in Excel)
+'
+
+'===========================================================================
+' External applications required:
+'===========================================================================
+'   None
+
+
+'*****************************************************
+'*****  WARNING: SETTINGS BELOW MUST BE AMENDED  *****
+'*****************************************************
+
+'default email address for Trigger Failure and if recipient is specified as "" (mainly for testing)
+    'see Function cTriggerEmailTo
+'default email address(es) for Admin notification
+    'see Function cAdminEmailTo
+        
+'default email address for "black hole" to send emails (mainly for testing)
+    Public Const cBlackHoleEmailTo As String = _
+        "blackhole@company.com"
+    
+'automation user accounts
+    Private Const sAutomationUser As String = "pcinsightvm|pcopsvm"
+
+'ignore audit logging for these users (separate|with|pipe)
+    Public Const cIgnoreAuditEmailsForTheseUsers As String = _
+        "|pcinsightvm|pcopsvm|someotherusername|"
+
+'max attachment size (dictated by company limits)
+    Public Const eMaxAttSize As Long = 10000000  'v1.10 - size in bytes
+
+'shared drive location for P&C
+    Private Const sPathYDrive As String = "\\company.local\Group Data\P&C\"
+    Private Const sPathMDrive As String = "\\company.local\Group Data\"
+
+'*****************************************************
+
+Private Enum olDefaultFolders
+    olFolderCalendar = 9
+    olFolderContacts = 10
+    olFolderDeletedItems = 3
+    olFolderDrafts = 16
+    olFolderInbox = 6
+    olFolderJournal = 11
+    olFolderJunk = 23
+    olFolderNotes = 12
+    olFolderOutbox = 4
+    olFolderSentMail = 5
+    olFolderTasks = 13
+    olPublicFoldersAllPublicFolders = 18
+    olFolderConflicts = 19
+    olFolderLocalFailures = 21
+    olFolderServerFailures = 22
+    olFolderSyncIssues = 20
+End Enum
+ 
+Private Enum olItemType
+    olAppointmentItem = 1
+    olContactItem = 2
+    olDistributionListItem = 7
+    olJournalItem = 4
+    olMailItem = 0
+    olNoteItem = 5
+    olPostItem = 6
+    olTaskItem = 3
+End Enum
+
+Function modEmailVer() As String
+modEmailVer = modEmailCodeVer
+End Function
+
+Function cAdminEmailTo() As String
+'v13.14 2020-11-05 15:32 - replaced cAdminEmailTo and cTriggerEmailTo with Functions to work with multiple automation accounts
+If Environ("Username") = "pcopsvm" Then cAdminEmailTo = "recipient@company.com"
+If Environ("Username") = "pcinsightvm" Then cAdminEmailTo = "recipient@company.com"
+End Function
+
+Function cTriggerEmailTo() As String
+'v13.14 2020-11-05 15:32 - replaced cAdminEmailTo and cTriggerEmailTo with Functions to work with multiple automation accounts
+If Environ("Username") = "pcopsvm" Then cTriggerEmailTo = "pcopsvm@company.com"
+If Environ("Username") = "pcinsightvm" Then cTriggerEmailTo = "pcinsightvm@company.com"
+End Function
+
+Function SendEmail(ByVal Email_Recipient As String, Optional ByVal Email_RecipientCC As String _
+    , Optional ByVal Email_RecipientBCC As String, Optional ByVal Email_Subject As String _
+    , Optional ByVal Email_BodyText As String, Optional ByVal DisplayMsg As Boolean = False _
+    , Optional ByVal AttachmentPath As String, Optional ByVal AttachmentPath2 As String, Optional ByVal AttachmentPath3 As String _
+    , Optional ByVal Email_SendOnBehalfOf As String, Optional Email_AsHTML As Boolean _
+    , Optional ByVal Email_CDO As Boolean, Optional ByVal Email_ReplyTo As String _
+    , Optional ByVal BypassVersionNumber As Boolean, Optional ByVal BypassSentItems As Boolean = True _
+    , Optional ByVal ImagePath1 As String, Optional ByVal ImagePath2 As String, Optional ByVal ImagePath3 As String, Optional ByVal ImagePath4 As String, Optional ByVal ImagePath5 As String, Optional ByVal ImagePath6 As String _
+    ) As Byte
+'v13.17 2020-11-12 16:46 - SendEmail: improved Debug.Print messages for testing
+'v13.16 2020-11-12 15:17 - SendEmail: added %HTMLTABLE1% thru 6
+'v13.12 2020-10-08 16:05 - added sAutomationUser and checks multiple VM user accounts
+'v13.11 2019-09-23 10:12 - SendEmail: bugfix, prevents double-addition of sCodeVer
+'v13.06 2018-12-10 16:26 - SendEmail: switched failure message to CDO
+'v13.05 2018-12-08 17:11 - SendEmail: added Debug messages
+'v13.04 2018-12-08 17:01 - SendEmail: bugfix: uses CDO if all else fails, but bypasses it for pcinsightvm
+'v13.02 2018-11-26 18:24 - SendEmail: bugfix: workaround for Outlook being offline, uses CDO and sends from pcinsightvm
+'v12.01 2018-07-03 18:13 - allows up to 6 Images embedded
+'v12.00 2018-06-29 12:48 - allows embedding of images in HTML: https://excel-macro.tutorialhorizon.com/excel-vba-send-mail-with-embedded-image-in-message-body-from-ms-outlook-using-excel/
+'                        - replaces %HTMLIMAGE1% in the HTML body text with the image from ImagePath1
+'v11.23 2018-05-08 12:23 - formatted link to file in CodeVer as HTML
+'v11.21 2018-04-23 09:23 - changed Excel application check
+'v11.20 2018-04-23 09:20 - added ThisWorkbook.FullName to sCodeVer
+'v11.17 2017-10-02 10:30 - changed Environ("Username") to CreateObject("WScript.Network").UserName
+'v11.12 2017-06-06 13:22 - late binding to Excel for username
+'v11.10 2017-01-24 10:06 - replaced deprecated modEmailVer with modEmailCodeVer throughout module
+'v11.09 2017-01-17 12:31 - added BypassSentItems to options (default True) except for VM which is always False
+'v11.07 2016-12-16 10:05 - added Application.Username to emails (when BypassVersionNumber = False)
+'v11.01 2016-10-31 10:04 - added Environ("computername") to emails (when BypassVersionNumber = False)
+'v10.03 2016-09-20 14:39 - set SendOnBehalfOf to default email (unless mailbox name isn't this user's email address)
+'v10.02 2016-09-20 14:05 - set ReplyTo to default email (unless mailbox name isn't this user's email address)
+'v10.01 2016-09-16 09:30 - added error capture for Email_CDO where user's mailbox cannot provide their email address
+'v9.03 2016-06-14 12:51 - option to exclude Version Number from output email
+'v9.02 2016-06-10 11:36 - bugfix for sending, checks that Reply-To address is valid, warning if not
+'v9.01 2016-06-10 10:30 - default Email_ReplyTo set for pcinsightvm, swapped cDefaultEmail for sDefaultEmail, added modEmailCodeVer to emails
+'v9.00 2016-06-10 10:08 - added Email_ReplyTo
+'v7.01 2016-02-08 12:08 - bugfix for Email_CDO routine
+'v6.00 2016-02-05 13:33 - added Email_CDO
+'v4.00 2015-07-31 16:42 - added send as HTML
+'v3.02 2014-09-16 11:21 - improved Attachments failures and sends error to default email address
+'v2.01 2014-09-01 21:03 - bugfix for %20 HTML error
+'v2.00 2014-03-03 09:51 - now can Email_SendOnBehalfOf (uses default mailbox, if blank)
+'v1.09 2013-11-12 10:36
+'results: 0=success, 1=fail
+'original source: http://support.microsoft.com/kb/161088
+'v1.05 bugfix: http://stackoverflow.com/questions/13019651/automated-email-generation-not-resolving-multiple-recipients
+
+On Error GoTo SendEmailError
+
+Dim objOutlook As Object        'Outlook.Application
+'Dim objOutlookMsg 'As Object     'Outlook.MailItem
+Dim objOutlookRecip As Object   'Outlook.Recipient
+Dim objOutlookAttach As Object  'Outlook.Attachment 'http://stackoverflow.com/questions/13019651/automated-email-generation-not-resolving-multiple-recipients
+Dim emailList As Variant, NumEmails As Long, AddEmailLoop As Long
+Dim Email_FailureNotice As String
+Dim sDefaultEmail As String
+If InStr(getOperatingSystem, "Microsoft Windows Server") > 0 Then
+    Email_CDO = True  'Outlook automation is not available on 2016, so force CDO
+    sDefaultEmail = cTriggerEmailTo
+Else
+    If InStr(sAutomationUser, Environ("Username")) > 0 Then
+        Email_CDO = True
+        sDefaultEmail = "BookingGo -- P&C Insight (automated email) <" & cTriggerEmailTo & ">" 'bypasses error with Outlook saying it can't be accessed
+    Else
+On Error Resume Next
+        sDefaultEmail = modEmail.cDefaultEmail  'this can fail if Outlook isn't running
+        If sDefaultEmail = "" Then
+            Email_CDO = True
+            sDefaultEmail = cTriggerEmailTo
+        End If
+On Error GoTo 0
+    End If
+End If
+If sDefaultEmail = "" Then sDefaultEmail = "BookingGo -- P&C Insight (automated email) <" & cTriggerEmailTo & ">"    'bypasses error with Outlook saying it can't be accessed
+If Application.Name = "Microsoft Excel" Then
+    Dim xl As Object, xlUser As String
+    Set xl = Application
+    xlUser = xl.UserName
+End If
+If InStr(sDefaultEmail, "@") = 0 And Email_CDO = True Then
+'send error report to VM and [redacted]
+    'Email_CDO = False
+    modEmail.SendEmail cTriggerEmailTo, cAdminEmailTo, _
+        , "User Mailbox Error: " & CreateObject("WScript.Network").UserName _
+        , "User " & xlUser & " needs to recreate their Outlook Mail Profile", , , , , , , True
+End If
+
+Dim cLF As String, cCrLF
+If Email_AsHTML Then cLF = "<br>" Else cLF = vbLf
+If Email_AsHTML Then cCrLF = "<p>" Else cCrLF = vbCrLf
+
+Dim sCodeVer As String
+If BypassVersionNumber = False Then
+    sCodeVer = cCrLF & cCrLF & modEmailCodeVer & cLF & Environ("computername") & cLF & xlUser & cLF & CreateObject("WScript.Network").UserName
+    If Application.Name = "Microsoft Excel" Then
+        If Email_AsHTML Then
+            sCodeVer = sCodeVer & cLF & "<a href=" & ThisWorkbook.FullName & ">" & ThisWorkbook.FullName & "</a>"
+        Else
+            sCodeVer = sCodeVer & cLF & """" & ThisWorkbook.FullName & """"
+        End If
+    End If
+    'commented, added later: Email_BodyText = Email_BodyText & sCodeVer
+End If
+If Email_CDO Then
+'send by Windows CDO
+    Email_via_CDO sDefaultEmail, sDefaultEmail _
+        , Email_Recipient, Email_RecipientCC, Email_RecipientBCC _
+        , Email_Subject, Email_BodyText, Email_AsHTML _
+        , AttachmentPath, AttachmentPath2, AttachmentPath3
+    Exit Function
+Else
+Debug.Print Now & " Sending email via Outlook to " & Email_Recipient
+'Create the Outlook session
+    If InStr(Application.Name, "Outlook") = 0 Then
+        Set objOutlook = CreateObject("Outlook.Application")
+    Else
+        Set objOutlook = Application
+    End If
+End If
+
+' Create the message.
+'Set objOutlookMsg = objOutlook.CreateItem(0)    'olMailItem
+Set objOutlook = objOutlook.CreateItem(0)       'olMailItem
+
+'With objOutlookMsg
+With objOutlook
+    
+    ' Add attachments to the message.
+On Error Resume Next
+    If AttachmentPath <> "" Then  'v1.09
+        If Dir(AttachmentPath) <> "" Then
+            Set objOutlookAttach = .Attachments.Add(AttachmentPath)
+        Else
+        'note failure and send failure to default email address
+            Email_FailureNotice = vbLf & "NB: Attachment 1 failed: " & AttachmentPath
+            Email_RecipientBCC = sDefaultEmail & "; " & Email_RecipientBCC
+        End If
+    End If
+    If AttachmentPath2 <> "" Then  'v1.09
+        If Dir(AttachmentPath2) <> "" Then
+            Set objOutlookAttach = .Attachments.Add(AttachmentPath2)
+        Else
+        'note failure and send failure to default email address
+            Email_FailureNotice = Email_FailureNotice & vbLf & "NB: Attachment 2 failed: " & AttachmentPath2
+            Email_RecipientBCC = sDefaultEmail & "; " & Email_RecipientBCC
+        End If
+    End If
+    If AttachmentPath3 <> "" Then  'v1.09
+        If Dir(AttachmentPath3) <> "" Then
+            Set objOutlookAttach = .Attachments.Add(AttachmentPath3)
+        Else
+        'note failure and send failure to default email address
+            Email_FailureNotice = Email_FailureNotice & vbLf & "NB: Attachment 3 failed: " & AttachmentPath3
+            Email_RecipientBCC = sDefaultEmail & "; " & Email_RecipientBCC
+        End If
+    End If
+On Error GoTo 0
+
+On Error GoTo SendEmailError_Headers
+    ' Add the To recipient(s) to the message.
+    If Email_Recipient = "" Then
+        Set objOutlookRecip = .Recipients.Add(cDefaultEmail)  'for testing/blunt force only
+    Else
+    'http://stackoverflow.com/questions/13019651/automated-email-generation-not-resolving-multiple-recipients
+        Email_Recipient = Replace(Email_Recipient, "%20", " ")  'v2.01
+        Email_Recipient = Replace(Email_Recipient, ";", "; ")  'v1.06
+        emailList = Split(Email_Recipient, ";")
+        NumEmails = UBound(emailList)
+        For AddEmailLoop = 0 To NumEmails
+            Set objOutlookRecip = .Recipients.Add(emailList(AddEmailLoop))
+            objOutlookRecip.Type = 1 'olTo
+            objOutlookRecip.Resolve
+        Next
+    End If
+
+    ' Add the CC recipient(s) to the message.
+    If Email_RecipientCC <> "" Then
+        Email_RecipientCC = Replace(Email_RecipientCC, "%20", " ")  'v2.01
+        Email_RecipientCC = Replace(Email_RecipientCC, ";", "; ")  'v1.06
+        emailList = Split(Email_RecipientCC, "; ")
+        NumEmails = UBound(emailList)
+        For AddEmailLoop = 0 To NumEmails
+            Set objOutlookRecip = .Recipients.Add(emailList(AddEmailLoop))
+            objOutlookRecip.Type = 2 'olCC
+            objOutlookRecip.Resolve
+        Next
+    End If
+    
+   ' Add the BCC recipient(s) to the message.
+    If Email_RecipientBCC <> "" Then
+        Email_RecipientBCC = Replace(Email_RecipientBCC, "%20", " ")  'v2.01
+        Email_RecipientBCC = Replace(Email_RecipientBCC, ";", "; ")  'v1.06
+        emailList = Split(Email_RecipientBCC, "; ")
+        NumEmails = UBound(emailList)
+        For AddEmailLoop = 0 To NumEmails
+            Set objOutlookRecip = .Recipients.Add(emailList(AddEmailLoop))
+            objOutlookRecip.Type = 3 'olBCC
+            objOutlookRecip.Resolve
+        Next
+    End If
+
+    ' v2.00
+    ' add SendOnBehalfOf
+    If Email_SendOnBehalfOf = "" And InStr(sDefaultEmail, "@") > 0 Then Email_SendOnBehalfOf = sDefaultEmail
+    If Email_SendOnBehalfOf <> "" Then .SentOnBehalfOfName = Email_SendOnBehalfOf
+    
+    ' v10.02 set to default email (unless mailbox name isn't this user's email address)
+    If Email_ReplyTo = "" And InStr(sDefaultEmail, "@") > 0 Then Email_ReplyTo = sDefaultEmail
+    'auto-correction for VM
+    If Email_ReplyTo = cTriggerEmailTo Then Email_ReplyTo = "P&CInsight@company.com"
+    If Email_ReplyTo <> "" Then
+        While .ReplyRecipients.Count > 0
+            .ReplyRecipients.Remove 1
+        Wend
+        .ReplyRecipients.Add Email_ReplyTo
+        If .ReplyRecipients.ResolveAll = False Then
+            MsgBox "Couldn't resolve Reply-To address.  Send anyway?", vbExclamation, modEmailCodeVer
+        End If
+    End If
+On Error GoTo 0
+
+On Error GoTo SendEmailError_HTML
+    'attach images and embed into HTML body (replace "%HTMLIMAGE1%" or add at the end)
+    'if you want to attach a chart image, use Function Email_Save_Chart_As_Image to save the chart as GIF and return the path
+    If Email_AsHTML Then
+        If ImagePath1 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath1, 1, 0
+        'embed the image in HTML
+        '!! may need to think about recoding the size to a suitable scale: & " width='500' height='200'>"
+            If InStr(Email_BodyText, "%HTMLIMAGE1%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE1%", "<p><img src='cid:" & Dir(ImagePath1) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath1) & "'>"      ' & " width='500' height='200'
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE1%", "")
+        End If
+        If ImagePath2 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath2, 1, 0
+        'embed the image in HTML
+            If InStr(Email_BodyText, "%HTMLIMAGE2%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE2%", "<p><img src='cid:" & Dir(ImagePath2) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath2) & "'>"
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE2%", "")
+        End If
+        If ImagePath3 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath3, 1, 0
+        'embed the image in HTML
+            If InStr(Email_BodyText, "%HTMLIMAGE3%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE3%", "<p><img src='cid:" & Dir(ImagePath3) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath3) & "'>"
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE3%", "")
+        End If
+        If ImagePath4 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath4, 1, 0
+        'embed the image in HTML
+        '!! may need to think about recoding the size to a suitable scale: & " width='500' height='200'>"
+            If InStr(Email_BodyText, "%HTMLIMAGE4%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE4%", "<p><img src='cid:" & Dir(ImagePath4) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath4) & "'>"      ' & " width='500' height='200'
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE4%", "")
+        End If
+        If ImagePath5 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath5, 1, 0
+        'embed the image in HTML
+            If InStr(Email_BodyText, "%HTMLIMAGE5%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE5%", "<p><img src='cid:" & Dir(ImagePath5) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath5) & "'>"
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE5%", "")
+        End If
+        If ImagePath6 <> "" Then
+        'add the image in hidden manner, position at 0 will make it hidden
+            .Attachments.Add ImagePath6, 1, 0
+        'embed the image in HTML
+            If InStr(Email_BodyText, "%HTMLIMAGE6%") > 0 Then
+                Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE6%", "<p><img src='cid:" & Dir(ImagePath6) & "'>")
+            Else
+                Email_BodyText = Email_BodyText & vbCrLf & vbCrLf & "<img src='cid:" & Dir(ImagePath6) & "'>"
+            End If
+        Else
+            Email_BodyText = Replace(Email_BodyText, "%HTMLIMAGE6%", "")
+        End If
+    Else
+    'simply add the image as an attachment
+        If ImagePath1 <> "" Then .Attachments.Add ImagePath1
+        If ImagePath2 <> "" Then .Attachments.Add ImagePath2
+        If ImagePath3 <> "" Then .Attachments.Add ImagePath3
+        If ImagePath4 <> "" Then .Attachments.Add ImagePath4
+        If ImagePath5 <> "" Then .Attachments.Add ImagePath5
+        If ImagePath6 <> "" Then .Attachments.Add ImagePath6
+    End If
+On Error GoTo 0
+    
+    'embed HTML tables into HTML body (replace "%HTMLTABLE1%")
+    If Email_AsHTML Then
+    Dim sHTMLTable As String
+On Error Resume Next
+    'replace %HTMLTABLE1% parameter with table HTML code
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML1"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE1%", sHTMLTable)
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML2"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE2%", sHTMLTable)
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML3"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE3%", sHTMLTable)
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML4"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE4%", sHTMLTable)
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML5"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE5%", sHTMLTable)
+        sHTMLTable = ""
+        sHTMLTable = RangetoHTML(Range("Email_TableHTML6"))
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE6%", sHTMLTable)
+On Error GoTo 0
+    Else
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE1%", "")
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE2%", "")
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE3%", "")
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE4%", "")
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE5%", "")
+        Email_BodyText = Replace(Email_BodyText, "%HTMLTABLE6%", "")
+    End If
+    
+On Error GoTo SendEmailError
+    ' Set the Subject, Body, From, and Importance of the message.
+    ' also add sCodeVer to end of message (it's blank if not needed)
+    .Subject = Email_Subject
+    If Email_AsHTML Then
+        .HTMLBody = Email_BodyText & vbCrLf & vbCrLf & Email_FailureNotice & sCodeVer  'v9.01 v3.02
+    Else
+        .Body = Email_BodyText & vbCrLf & vbCrLf & Email_FailureNotice & sCodeVer  'v9.01 v3.02
+    End If
+    .Importance = 2  'olImportanceHigh  'High importance
+
+    'should we bypass Sent Items?
+    If InStr(cIgnoreAuditEmailsForTheseUsers, CreateObject("WScript.Network").UserName) > 0 Then .DeleteAfterSubmit = False Else .DeleteAfterSubmit = BypassSentItems
+    
+    ' Should we display the message before sending?
+    If DisplayMsg Then
+        .Display
+    Else
+        .Save
+Debug.Print Now & " objOutlook.Send"
+        .Send
+    End If
+On Error GoTo 0
+
+End With 'objOutlook
+
+Set objOutlook = Nothing
+SendEmail = 0  'no error
+Debug.Print Now & " Done"
+Exit Function
+
+SendEmailError:
+SendEmail = 1  'general failure on sending, fatal
+Debug.Print Now & " FAILED TO SEND"
+Exit Function
+
+SendEmailError_Headers:
+SendEmail = 2  'failure in headers, fatal
+Debug.Print Now & " FAILED TO ADD HEADERS"
+Exit Function
+
+SendEmailError_HTML:
+SendEmail = 3  'failure in HTML enrichment or charts, not fatal
+Debug.Print Now & " FAILED TO ADD HTML OR CHARTS"
+Resume Next 'not fatal
+Exit Function
+
+End Function
+ 
+Function Email_via_CDO(ByVal Email_From As String, ByVal Email_Sender As String _
+    , ByVal Email_Recipient As String, Optional ByVal Email_RecipientCC As String _
+    , Optional ByVal Email_RecipientBCC As String, Optional ByVal Email_Subject As String _
+    , Optional ByVal Email_BodyText As String, Optional Email_AsHTML As Boolean _
+    , Optional ByVal AttachmentPath1 As String, Optional ByVal AttachmentPath2 As String, Optional ByVal AttachmentPath3 As String _
+    ) As Byte
+'v13.17 2020-11-12 16:46 - Email_via_CDO: improved ErrorHandlers and Debug.Print messages for testing
+'v13.03 2018-11-27 13:25 - Email_via_CDO: improved Debug.Print messages for testing
+'v11.12 2017-06-06 13:22 - late binding to Excel for username
+'v11.11 2017-01-31 14:17 - changed mail.company.com to IP address
+'v11.08 2016-12-16 11:00 - bugfix in sending no attachments by CDO
+'v11.03 2016-11-01 09:57 - added Attachments
+'v11.02 2016-11-01 09:28 - attempted bugfix, Application.DisplayAlerts
+'v6.00 2016-02-05 13:33 - added Email_via_CDO
+ 
+Dim bADA As Boolean
+If Application.Name = "Microsoft Excel" Then
+    Dim xl As Object
+    Set xl = Application
+    bADA = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+End If
+
+Debug.Print Now & " Sending email via CDO to " & Email_Recipient
+
+On Error GoTo ErrorHandler_CDO_Config
+
+Dim objMessage As Object, cdoConfig As Object
+Set cdoConfig = CreateObject("CDO.Configuration")
+Set objMessage = CreateObject("CDO.Message")
+objMessage.Subject = Email_Subject
+objMessage.From = Email_From
+objMessage.Sender = Email_Sender
+objMessage.To = Email_Recipient
+objMessage.CC = Email_RecipientCC
+objMessage.BCC = Email_RecipientBCC
+If Email_AsHTML Then
+    objMessage.HTMLBody = Email_BodyText
+Else
+    objMessage.TextBody = Email_BodyText
+End If
+
+'v11.08 bugfix, Dir("") finds the LAST file from a previous Dir command
+If AttachmentPath1 <> "" Then
+    If Dir(AttachmentPath1) <> "" Then
+        If FileLen(AttachmentPath1) < modEmail.eMaxAttSize Then objMessage.AddAttachment AttachmentPath1 Else Debug.Print Now & " Attachment too large " & AttachmentPath1
+    End If
+End If
+If AttachmentPath2 <> "" Then
+    If Dir(AttachmentPath2) <> "" Then
+        If FileLen(AttachmentPath2) < modEmail.eMaxAttSize Then objMessage.AddAttachment AttachmentPath2 Else Debug.Print Now & " Attachment too large " & AttachmentPath2
+    End If
+End If
+If AttachmentPath3 <> "" Then
+    If Dir(AttachmentPath3) <> "" Then
+        If FileLen(AttachmentPath3) < modEmail.eMaxAttSize Then objMessage.AddAttachment AttachmentPath3 Else Debug.Print Now & " Attachment too large " & AttachmentPath3
+    End If
+End If
+
+'==This section provides the configuration information for the remote SMTP server.
+'==Normally you will only change the server name or IP.
+objMessage.Configuration.Fields.Item _
+("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2
+
+'Name or IP of Remote SMTP Server
+objMessage.Configuration.Fields.Item _
+("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "10.x.x.x"  'IP for "mail.company.com", bypasses DNS lookups, usually more reliable and faster
+
+'Server port (typically 25)
+objMessage.Configuration.Fields.Item _
+("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25
+
+Debug.Print Now & " objMessage.Configuration.Fields.Update"
+objMessage.Configuration.Fields.Update
+
+On Error GoTo 0
+
+On Error GoTo ErrorHandler_CDO_Send
+'==End remote SMTP server configuration section==
+Debug.Print Now & " objMessage.Send"
+objMessage.Send
+
+ErrorHandler_Done:
+Email_via_CDO = 0   'everything OK
+Debug.Print Now & " Done"
+If Not xl Is Nothing Then xl.DisplayAlerts = bADA
+Exit Function
+
+ErrorHandler_CDO_Send:
+Email_via_CDO = 1   'general send failure, fatal
+Debug.Print Now & " Email_via_CDO: send fail"
+If Not xl Is Nothing Then xl.DisplayAlerts = bADA
+Exit Function
+
+ErrorHandler_CDO_Config:
+Email_via_CDO = 2   'general config failure, fatal
+Debug.Print Now & " Email_via_CDO: config fail"
+If Not xl Is Nothing Then xl.DisplayAlerts = bADA
+Exit Function
+
+End Function
+
+Function cDefaultEmail() As String
+'v3.01 2014-09-08 11:49 - bugfix for default user in multiple Outlook sessions, only works in Outlook, won't work correctly from other apps as it will always take the user from the LAST opened Outlook session
+'v3.00 2014-09-05 11:42 - cDefaultEmail as function, now takes email address from default mailbox
+Dim OL_app As Object
+Set OL_app = Application
+If InStr(OL_app.Name, "Outlook") = 0 Then
+    Set OL_app = CreateObject("Outlook.Application")
+End If
+cDefaultEmail = OL_app.GetNamespace("MAPI").GetDefaultFolder(olFolderInbox).Parent
+Set OL_app = Nothing
+End Function
+
+Function getOperatingSystem()
+'---------------------------------------------------------------------------------------
+' Procedure : getOperatingSystem
+' Author    : Daniel Pineault, CARDA Consultants Inc.
+' Website   : http://www.cardaconsultants.com
+' Purpose   : Return the active OS details
+' Copyright : The following may be altered and reused as you wish so long as the
+'             copyright notice is left unchanged (including Author, Website and
+'
+' Revision History:
+' Rev       Date(yyyy/mm/dd)        Description
+' **************************************************************************************
+' 1         2012-Sep-27                 Initial Release
+'---------------------------------------------------------------------------------------
+'source: https://answers.microsoft.com/en-us/msoffice/forum/all/vba-to-find-windows-version/1a1e72f5-0b4a-4c6a-ba4c-a6964f4ee4cc
+    Dim localHost       As String
+    Dim objWMIService   As Variant
+    Dim colOperatingSystems As Variant
+    Dim objOperatingSystem As Variant
+
+    On Error GoTo Error_Handler
+
+    localHost = "." 'Technically could be run against remote computers, if allowed
+    Set objWMIService = GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & localHost & "\root\cimv2")
+    Set colOperatingSystems = objWMIService.ExecQuery("Select * from Win32_OperatingSystem")
+
+    For Each objOperatingSystem In colOperatingSystems
+        getOperatingSystem = objOperatingSystem.Caption & " " & objOperatingSystem.Version
+        Exit Function
+    Next
+
+Error_Handler_Exit:
+    On Error Resume Next
+    Exit Function
+
+Error_Handler:
+    MsgBox "The following error has occured." & vbCrLf & vbCrLf & _
+           "Error Number: " & Err.Number & vbCrLf & _
+           "Error Source: getOperatingSystem" & vbCrLf & _
+           "Error Description: " & Err.Description, _
+           vbCritical, "An Error has Occured!"
+    Resume Error_Handler_Exit
+End Function
+
+Function RangetoHTML(rng As Object) As String 'Excel.Range
+'v11.25 2018-05-22 11:06 - bugfix: see https://stackoverflow.com/questions/40836626/application-defined-error
+'v11.24 2018-05-21 10:49 - bugfix: added ErrorHandler to routine, fixes stray Excel windows
+'v11.21 2018-04-23 09:23 - changed Excel application check
+'v11.19 2018-04-23 09:06 - RangetoHTML: changed temp file name
+'v11.16 2017-08-04 08:51 - minor improvements to code
+'v11.15 2017-08-04 07:59 - swapped enumerator for xlPasteColumnWidths, added bASU and iAC, added errorhandler, defined As String
+'v11.14 2017-07-06 11:03 - minor improvement to code
+'v11.13 2017-06-12 09:07 - bugfix
+'v11.12 2017-06-06 13:22 - late binding to Excel for username
+'v5.01 2016-02-05 12:48 - added Application.ScreenUpdating
+'v5.00 2016-02-04 09:52 - added RangetoHTML
+
+On Error Resume Next
+Dim xl As Object
+Dim bASU As Boolean, iAC As Integer
+If Application.Name <> "Microsoft Excel" Then
+    MsgBox "RangetoHTML doesn't work outside Excel, don't use it in " & Application.Name, vbCritical, ""
+Else
+    Set xl = Application
+    bASU = xl.ScreenUpdating
+    xl.ScreenUpdating = False
+    iAC = xl.Calculation
+    xl.Calculation = xlCalculationManual
+    ' Changed by Ron de Bruin 28-Oct-2006
+    ' Working in Office 2000-2016
+    Dim fso As Object
+    Dim ts As Object
+    Dim TempFile As String
+    Dim TempWB As Object 'Excel.Workbook
+    
+    TempFile = Environ$("temp") & "\" & Format(Now, "yyyy-mm-dd hh-mm-ss") & ".htm"
+    
+    'Copy the range and create a new workbook to past the data in
+    Set TempWB = xl.Workbooks.Add(1)
+    With TempWB.Sheets(1)
+CopyPasteAgain:
+    rng.Copy
+        .Cells(1).PasteSpecial xlPasteColumnWidths, , False, False
+        .Cells(1).PasteSpecial xlPasteValues, , False, False
+        .Cells(1).PasteSpecial xlPasteFormats, , False, False
+If xl.CutCopyMode = False Then GoTo CopyPasteAgain Else xl.CutCopyMode = False
+        .DrawingObjects.Visible = True  'if needed, make them visible
+        .DrawingObjects.Delete          'so you can delete them
+    End With
+    
+    'Publish the sheet to a htm file
+'!! this is causing problems in automation
+    
+    Dim sName As String, sAddress As String ', vRefStyle As Variant
+    sName = TempWB.Sheets(1).Name
+    sAddress = TempWB.Sheets(1).UsedRange.Address
+    xl.ReferenceStyle = xlA1    'v11.25 bugfix, see https://stackoverflow.com/questions/40836626/application-defined-error
+    With TempWB.PublishObjects.Add( _
+         SourceType:=xlSourceRange, _
+         FileName:=TempFile, _
+         Sheet:=sName, _
+         Source:=sAddress, _
+         HtmlType:=xlHtmlStatic, DivID:="Book1_4170")
+        .Publish (True)
+        .AutoRepublish = False
+    End With
+    
+    'Read all data from the htm file into RangetoHTML
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set ts = fso.GetFile(TempFile).OpenAsTextStream(1, -2)
+    RangetoHTML = ts.readall
+    ts.Close
+    RangetoHTML = Replace(RangetoHTML, "align=center x:publishsource=", _
+                          "align=left x:publishsource=")
+    RangetoHTML = fn_replace_report_links(RangetoHTML)
+    
+    'Close TempWB
+    TempWB.Close SaveChanges:=False
+    
+    'Delete the htm file we used in this function
+    Kill TempFile
+    
+    Set ts = Nothing
+    Set fso = Nothing
+    Set TempWB = Nothing
+    
+    xl.Calculation = iAC
+    xl.ScreenUpdating = bASU
+    If xl <> Application Then xl.Quit
+    Set xl = Nothing
+End If
+End Function
+
+Function fn_replace_report_links(ByVal sOriginalCode As String)
+'v13.13 2020-11-05 15:25 - fn_replace_report_links: switched to sPathMDrive from sPathYDrive
+'v11.18 2018-03-26 15:02 - added sPathYDrive
+'v8.00 2016-04-08 12:35 - replaces "link%20%to%20file" in HTML
+'tries to replace all instances of "Y:\Path%20to%20Folder\Link"
+'with a formatted HTML tag for "\\company.local\Group Data\P&C\Path to Folder\Link"
+'(note: quote marks and %20 spaces are required to prevent errors and reprocessing)
+Dim sNewCode As String
+sNewCode = sOriginalCode
+Const cMtag As String = "M:\"
+Const cUNC As String = sPathMDrive
+Const cQuo As String = "&quot;"  'in HTML, this is equal to Chr(34) in VBA or " in text
+Const cPlaceholder As String = "CORRECTEDLINKGOESHERE"
+Dim a As Integer, b As Integer, c As Long, sLink As String, sUNC As String
+c = Len(sNewCode)  'end marker, corrected later if applicable
+
+'does the code appear to contain a suitable link?
+a = InStr(a + 1, sNewCode, cQuo & cMtag)
+
+While a > 0
+    'check that link is "surrounded by quote marks"
+    'find next "quote mark" that marks the end of the link
+    b = InStr(a + 1, sNewCode, cQuo)
+    If b > 0 Then
+    'next range to search
+        c = b + Len(cQuo)
+    'take the entire link with quotemarks
+        sLink = Mid(sNewCode, a, b - a + Len(cQuo))
+    'check for spaces, this will cause errors
+        If InStr(sLink, " ") > 0 Then
+            MsgBox "Can't convert link with spaces into HTML, replace spaces with %20", vbCritical, "fn_replace_report_links"
+            fn_replace_report_links = sOriginalCode
+            Exit Function
+        End If
+    'replace the entire link with a placeholder in code
+        sNewCode = Replace(sNewCode, sLink, cPlaceholder)
+    'create UNC from link
+        sUNC = Replace(sLink, cMtag, cUNC)  'replace M:\ with \\UNC\
+        sUNC = Replace(sUNC, cQuo, Chr(34)) 'replace quotes with " suitable for <a> HTML tag
+        sUNC = Replace(sUNC, "%20", " ")    'replace HTML spaces with actual spaces
+    'clean up the link
+        sLink = Replace(sLink, cQuo, "")
+        sLink = Replace(sLink, "%20", " ")
+    'replace placeholder with corrected UNC and link in HTML tags
+        sNewCode = Replace(sNewCode, cPlaceholder, "<a href=" & sUNC & ">" & sLink & "</a>")
+        Debug.Print sLink
+        Debug.Print sUNC
+        Debug.Print sNewCode
+    End If
+    a = InStr(c, sNewCode, cQuo & cMtag)
+Wend
+fn_replace_report_links = sNewCode
+End Function
+
+Sub Email_Audit(Optional ByVal Email_Message As String)
+
+'**  PROCESS TO CHANGE THIS ROUTINE  **
+' 1. pause Outlook on VM2 by disabling the rule for Audit Trail
+' 2. follow instructions in Sub AuditEmailProcess()
+' 3. send a test Email_Audit and *THOROUGHLY* test on VM2 *before* rolling out to all reports masters
+
+'v13.10 2019-01-22 08:03 - Email_Audit: changed VM7 to VM2 in comments
+'v11.21 2018-04-23 09:23 - changed Excel application check
+'v11.17 2017-10-02 10:30 - changed Environ("Username") to CreateObject("WScript.Network").UserName
+'v11.12 2017-06-06 13:22 - late binding to Excel for username
+'v11.09 2017-01-17 11:13 - added BypassSentItems to options (default is True)
+'v11.07 2016-12-16 10:05 - added Application.Username to standard email format (not logged, just for info)
+'v11.06 2016-12-07 12:55 - added username to standard email format
+'v11.04 2016-11-07 15:12 - bypass logging for admin user(s)
+'v10.00 2016-07-19 16:33 - added Application.Version to Email_Audit
+'v7.00 2016-02-05 15:21 - added Email_Audit
+'http://www.mrexcel.com/forum/excel-questions/579410-visual-basic-applications-determine-if-user-running-64bit-excel-32bit-excel.html
+Dim sUsername As String, sUserInfo As String, sAppUser As String, sMessage As String
+'check for admin user(s)
+sUsername = CreateObject("WScript.Network").UserName
+If InStr(cIgnoreAuditEmailsForTheseUsers, sUsername) > 0 Then Exit Sub
+Dim bIs64Bit As Boolean, sAppInfo As String
+#If Win64 Then
+    bIs64Bit = True
+#End If
+sAppInfo = "Application: " & Application.Name & " Version: " & Application.Version
+Dim xl As Object, xlUser As String
+If Application.Name = "Microsoft Excel" Then
+    Set xl = Application
+    xlUser = xl.UserName
+    sAppUser = "AppUser: " & xlUser
+End If
+sUserInfo = "Username: " & sUsername
+sMessage = "Message: " & Email_Message
+If bIs64Bit Then sAppInfo = sAppInfo & " 64-bit" Else sAppInfo = sAppInfo & " 32-bit"
+modEmail.SendEmail cTriggerEmailTo, , , "Audit Trail" _
+    , "Report: " & Chr(34) & ThisWorkbook.FullName & Chr(34) & vbLf _
+    & sAppInfo & vbLf _
+    & sAppUser & vbLf _
+    & sUserInfo & vbLf _
+    & sMessage _
+    , , , , , , , , , , True
+    
+End Sub
+
+Function Email_Sender_Address(ByRef olMail As Object)
+'v13.01 2018-08-24 15:09 - Email_Sender_Address: bugfix, late binding
+'v13.00 2018-08-24 13:49 - added Email_Sender_Address function
+'source: https://stackoverflow.com/questions/36900156/senderemailaddress-property-does-not-contain-a-standard-email-address-for-intern
+If olMail.SenderEmailType = "EX" Then
+    Email_Sender_Address = olMail.Sender.GetExchangeUser().PrimarySmtpAddress
+Else
+    Email_Sender_Address = olMail.SenderEmailAddress
+End If
+End Function
+
+Sub Outlook_Clean_Emails(Optional ByVal AlsoSeparate As Boolean)
+'v11.22 2018-04-24 14:26 - added AlsoSeparate
+'v11.00 2016-10-20 14:39 - Outlook_Clean_Emails() first version
+'takes long string from ActiveCell of "Email Recipient <email@address.com>"
+'and extracts just "email@address.com" into cell below
+'>> optionally splits emails by cSep and dumps vertically into a column (allows sorting)
+Dim sFull As String, sThis As String, sOutput As String
+Dim a As Integer, b As Integer, c As Integer
+Const cStt As String = "<"
+Const cEnd As String = ">"
+Const cSep As String = "; "
+sFull = ActiveCell
+a = 1
+NextaClean:
+a = InStr(a, sFull, cStt) + 1
+If a > 1 Then
+    b = InStr(a, sFull, cEnd)
+    sThis = Mid(sFull, a, b - a)
+    If InStr(sOutput, sThis) = 0 Then
+    'removes duplicates
+        sOutput = sOutput & sThis & cSep
+    End If
+    a = b + 1
+    GoTo NextaClean
+End If
+If Right(sOutput, 2) = cSep Then sOutput = Left(sOutput, Len(sOutput) - 2)
+If sOutput <> "" Then
+    If AlsoSeparate = False Then
+        ActiveCell.Offset(1) = sOutput
+    Else
+        a = 1
+        c = 1
+NextaSplit:
+        b = InStr(a, sOutput, cSep) + 1
+        If b > a Then
+            sThis = Mid(sOutput, a, b - a - 1)
+            ActiveCell.Offset(c) = sThis
+            c = c + 1
+            a = b + Len(cSep) - 1
+            GoTo NextaSplit
+        Else
+            sThis = Mid(sOutput, a, Len(sOutput))
+            ActiveCell.Offset(c) = sThis
+        End If
+    End If
+End If
+End Sub
+
+Sub test_send_html()
+'Dim sHTMLcode As String
+'sHTMLcode = RangetoHTML(Range("tomsrange"))
+'sHTMLcode = sHTMLcode & "<img src=" & Chr(34) & xlU_Save_Chart_As_Image(24) & Chr(34) & ">"
+'sHTMLcode = sHTMLcode & "<img src=" & Chr(34) & xlU_Save_Chart_As_Image(26) & Chr(34) & ">"
+'sHTMLcode = sHTMLcode & "<br>"
+''sHTMLcode = "<a href=""http://www.company.com"">Test</a><img src=""http://www.bing.com/sa/simg/sw_nh_common_slim_spyglass.png"">"
+'modEmail.SendEmail "recipient@company.com", , , "Testing" _
+'    , sHTMLcode _
+'    , True, , , , , True
+End Sub
+
+
+'*****************************************************
+'*****  WARNING: SETTINGS BELOW MUST BE AMENDED  *****
+'*****************************************************
+'example code to add to admin_Emails
+'
+'Option Explicit
+'
+'Sub send_notification_email(Optional ByVal AttachmentPath1 As String, Optional ByVal AttachmentPath2 As String, Optional ByVal AttachmentPath3 As String _
+'    , Optional ByVal ImagePath1 As String, Optional ByVal ImagePath2 As String, Optional ByVal ImagePath3 As String, Optional ByVal ImagePath4 As String, Optional ByVal ImagePath5 As String, Optional ByVal ImagePath6 As String _
+'    , Optional ByVal TableHTML1 As String, Optional ByVal TableHTML2 As String, Optional ByVal TableHTML3 As String, Optional ByVal TableHTML4 As String, Optional ByVal TableHTML5 As String, Optional ByVal TableHTML6 As String)
+''v13.16 2020-11-12 15:17 - SendEmail: added TableHTML1-6
+''this is referred from modExtra:
+''Call admin_Emails.send_notification_email
+'
+'Dim sBody As String
+''load HTML email body, and replace %PLACEHOLDERS%
+'sBody = admin_Emails.Range("modExtra_EmailBody")
+'sBody = Replace(sBody, "%USERNAME%", Application.UserName)
+'
+'With admin_Emails
+''send HTML email from Email Notification sheet
+'    modEmail.SendEmail .Range("modExtra_EmailTo") _
+'        , .Range("modExtra_EmailCC") _
+'        , .Range("modExtra_EmailBCC") _
+'        , .Range("modExtra_EmailSubj") _
+'        , sBody _
+'        , admin_Emails.CheckBoxTest _
+'        , AttachmentPath1, AttachmentPath2, AttachmentPath3 _
+'        , , True, , , True, False _
+'        , ImagePath1, ImagePath2, ImagePath3, ImagePath4, ImagePath5, ImagePath6
+'End With
+'End Sub
+'
+'Sub convert_emails_in_cells_to_string()
+''creates a string of emails separated by ;
+''select a bunch of cells containing 1 email address in each cell, and run this
+'Dim s As String, r As Range
+'For Each r In Selection.Cells
+'    If s = "" Then
+'        s = r.Text
+'    Else
+'        s = s & "; " & r.Text
+'    End If
+'Next r
+'Debug.Print s  'outputs string to Immediate pane, press Ctrl+G if you can't see this
+'End Sub
+'
+'Function save_chart_as_image(ByVal ChartName As String) As String
+''where the chart to be added is an object pasted onto the admin_Emails sheet
+''and the chart name is always set as "Chart ChartName" e.g. "Chart EmailSummaryChart1"
+''this is referred from modExtra:
+''Call admin_Emails.send_notification_email(ImagePath1:=admin_Emails.save_chart_as_image("LossByManager"), ImagePath2:=admin_Emails.save_chart_as_image("P1CountByManager"))
+'Dim dd As String, pth As String, fn As String
+'dd = Format(Now, "yyyy-mm-dd hh")
+''Debug.Print dd
+'pth = Environ("temp") & "\"
+''Debug.Print pth
+'fn = Replace(ChartName & " " & dd & ".gif", " ", "_")     'underscores are necessary for HTML embedding, can't use spaces
+''Debug.Print fn
+'On Error GoTo ErrorNotSaved
+'admin_Emails.ChartObjects("Chart " & Replace(ChartName, "Chart ", "")).Chart.Export FileName:=pth & fn, FilterName:="gif"
+'If Dir(pth & fn) = "" Then GoTo ErrorNotSaved
+'save_chart_as_image = pth & fn
+'Exit Function
+'ErrorNotSaved:
+'End Function
+'
+'Private Sub CheckBoxTest_Click()
+''edit this according to requirements of images to be sent
+'If CheckBoxTest = False Then Exit Sub
+'send_notification_email ImagePath1:=save_chart_as_image("Chart LossByManager"), ImagePath2:=save_chart_as_image("Chart DMXByDestination"), ImagePath3:=save_chart_as_image("Chart DMXbyReason")
+'CheckBoxTest = False
+'End Sub

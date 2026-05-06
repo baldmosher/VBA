@@ -1,0 +1,161 @@
+Attribute VB_Name = "xlPCIFormat"
+Option Explicit
+Option Compare Text
+
+Sub PCI_Format_Header_Spacer_Sum_Spacer_Detail()
+'resets all formatting on report borders and column widths
+'needs coding to select range relative to ActiveCell
+'--> top 4 rows are fixed position relative to ActiveCell
+'--> detail block should be extended to cover to .End(xlDown)
+'then it needs coding to set the formats on admin sheet (i.e. set the order in a table, not in code)
+
+Dim rControlColumn As Range, rCC As Range, rRef As Range
+Set rControlColumn = Range("K:K")
+For Each rCC In rControlColumn
+    If rCC.Value = "TY" Then
+        Set rRef = rCC
+DoItAgain:
+        Call PCI_Format_Reset_3_Cell_Borders(rRef)
+        Call PCI_Format_Reset_3_Cell_Spacers(rRef)
+        Set rRef = rRef.Offset(0, 3)
+        If rRef.Value <> "" Then GoTo DoItAgain
+    End If
+Next rCC
+
+End Sub
+
+Sub PCI_Format_Reset_3_Cell_Borders(ByRef rRef As Range)
+
+Dim bASU As Boolean, iAC As Integer, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+    With rRef.Range("A1:C1,A3:C3,A5:C29")
+        .EntireColumn.ColumnWidth = 8.3
+        .Borders(xlDiagonalDown).LineStyle = xlNone
+        .Borders(xlDiagonalUp).LineStyle = xlNone
+        With .Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlInsideVertical)
+            .LineStyle = xlContinuous
+            .ThemeColor = 1
+            .TintAndShade = -0.249946592608417
+            .Weight = xlHairline
+        End With
+        With .Borders(xlInsideHorizontal)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+    End With
+
+    With rRef.Range("A2:C2,A4:C4")
+        .Borders(xlDiagonalDown).LineStyle = xlNone
+        .Borders(xlDiagonalUp).LineStyle = xlNone
+        With .Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        .Borders(xlInsideVertical).LineStyle = xlNone
+        .Borders(xlInsideHorizontal).LineStyle = xlNone
+    End With
+
+Application.ScreenUpdating = bASU
+Application.ScreenUpdating = iAC
+Application.EnableEvents = bAEE
+
+End Sub
+
+Sub PCI_Format_Reset_3_Cell_Spacers(ByRef rRef As Range)
+
+Dim bASU As Boolean, iAC As Integer, bAEE As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+
+    With rRef.Range("A2:C2,A4:C4")
+        .Borders(xlDiagonalDown).LineStyle = xlNone
+        .Borders(xlDiagonalUp).LineStyle = xlNone
+        With .Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        With .Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlHairline
+        End With
+        .Borders(xlInsideVertical).LineStyle = xlNone
+        .Borders(xlInsideHorizontal).LineStyle = xlNone
+    End With
+
+Application.ScreenUpdating = bASU
+Application.ScreenUpdating = iAC
+Application.EnableEvents = bAEE
+
+End Sub

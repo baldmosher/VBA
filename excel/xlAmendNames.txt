@@ -1,0 +1,55 @@
+Attribute VB_Name = "xlAmendNames"
+Option Explicit
+
+Sub test()
+'comment to leave one of these as appropriate for test
+Call amend_names("pivBookRouteWeb", "pivBookRoute", True, True)
+'Call amend_names("Web", "", True)
+'Call amend_names("addthistext")
+End Sub
+
+Sub amend_names(ByVal ExtraText As String _
+    , Optional ByVal ReplaceThisText As String _
+    , Optional AlsoDoPivots As Boolean _
+    , Optional AlsoDoSheets As Boolean)
+
+Dim s As String
+If AlsoDoPivots Then s = " and in PivotTable names"
+If AlsoDoSheets Then s = " and in Worksheet names"
+Dim nm As Name
+Dim ws As Worksheet
+Dim pt As PivotTable
+If ReplaceThisText = "" Then
+    If MsgBox("Warning: this will add  '" & ExtraText & "'  to ALL defined range names in ActiveWorkbook" & s, vbOKCancel Or vbExclamation, "") = vbCancel Then Exit Sub
+    For Each nm In ActiveWorkbook.Names
+        nm.Name = nm.Name & ExtraText
+    Next nm
+    If AlsoDoPivots Then
+        For Each ws In ActiveWorkbook.Sheets
+            If ws.PivotTables.Count > 0 Then
+                If AlsoDoSheets Then ws.Name = ws.Name & ExtraText
+                For Each pt In ws.PivotTables
+                    pt.Name = pt.Name & ExtraText
+                Next pt
+            End If
+        Next ws
+    End If
+Else
+    If MsgBox("Warning: this will replace  '" & ReplaceThisText & "'  with  '" & ExtraText & "'  in ALL defined range names in ActiveWorkbook" & s, vbOKCancel Or vbExclamation, "") = vbCancel Then Exit Sub
+    For Each nm In ActiveWorkbook.Names
+        nm.Name = Replace(nm.Name, ReplaceThisText, ExtraText)
+    Next nm
+    If AlsoDoPivots Then
+        For Each ws In ActiveWorkbook.Sheets
+            If ws.PivotTables.Count > 0 Then
+                If AlsoDoSheets Then ws.Name = Replace(ws.Name, ReplaceThisText, ExtraText)
+                For Each pt In ws.PivotTables
+                    pt.Name = Replace(pt.Name, ReplaceThisText, ExtraText)
+                Next pt
+            End If
+        Next ws
+    End If
+End If
+MsgBox "Done", vbInformation, ""
+End Sub
+

@@ -1,0 +1,45 @@
+Attribute VB_Name = "xlFormulaConvert"
+Option Explicit
+Option Compare Text
+Public Const xlFormulaConvert As String = _
+"xlFormulaConvert v1.01"
+'v1.01 2016-12-02 16:53 - bugfix
+'v1.00 2016-11-28 10:39 - added convert_IFERROR_into_empty_column_check
+
+Sub convert_IFERROR_into_empty_column_check(ByVal ColumnLetterToCheckForBlanks As String, Optional DoDebug As Boolean)
+'replaces =IFERROR(xxxx,"") with =IF($x:$x="","",xxxx) to check for blanks in the given column
+'this allows us to test formula cells in PowerPivot for calculations completed, see xlPivots.PP_Calcs_Finished
+'runs for all cells in Selection
+'typically takes ~30 seconds to scan & replace in ~10 columns in a big report
+'v1.01 2016-12-02 16:53 - bugfix
+'v1.00 2016-11-28 10:39 - added convert_IFERROR_into_empty_column_check
+
+Const sPrefixOld As String = "=IFERROR("
+Const sSuffixOld As String = ","""")"       '   ,"")
+Dim sPrefixNew As String
+sPrefixNew = "=IF($" & ColumnLetterToCheckForBlanks & ":$" & ColumnLetterToCheckForBlanks & "="""","""","   '   =IF($A:$A="","",
+Const sSuffixNew As String = ")"
+
+Dim r As Range, s As String
+Dim iAC As Integer
+iAC = Application.Calculation
+Application.Calculation = xlCalculationManual
+For Each r In Selection
+    s = r.Formula
+    If Left(s, Len(sPrefixOld)) = sPrefixOld And Right(s, Len(sSuffixOld)) = sSuffixOld Then
+    If DoDebug Then
+        Debug.Print "<original formula>"
+        Debug.Print r.Formula
+        Debug.Print "<new prefix>"
+        Debug.Print "=IF($" & ColumnLetterToCheckForBlanks & ":$" & ColumnLetterToCheckForBlanks & "=" & Chr(34) & Chr(34) & "," & Chr(34) & Chr(34) & ","
+        Debug.Print "<formula middle>"
+        Debug.Print Mid(s, Len(sPrefixOld) + 1, Len(s) - Len(sPrefixOld) - Len(sSuffixOld))
+    End If
+        s = sPrefixNew & Mid(s, Len(sPrefixOld) + 1, Len(s) - Len(sPrefixOld) - Len(sSuffixOld)) & sSuffixNew
+    If DoDebug Then Debug.Print s
+        r.Formula = s
+    End If
+Next r
+Application.Calculation = iAC
+
+End Sub

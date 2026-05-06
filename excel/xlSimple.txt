@@ -1,0 +1,88 @@
+Attribute VB_Name = "xlSimple"
+Option Explicit
+Option Compare Text
+
+Public t0 As Double, t1 As Double
+Public sReportList As String
+
+'Version History:
+Public Const xlSimpleCodeVer As String = _
+"xlSimple v1.01"
+'v1.01 2018-06-12 13:11 - Update_List: tweaked success messages to include list of refreshed reports
+'v1.00 2018-06-12 13:10 - xlSimple: started version numbering
+
+Function xlSimpleVer() As String
+xlSimpleVer = xlSimpleCodeVer
+End Function
+
+Sub Update_List(ByVal sListSheetName As String, Optional ByVal RunningManually As Boolean = True)
+'v1.01 2018-06-12 13:11 - Update_List: tweaked success messages to include list of refreshed reports
+'v1.00 2018-06-12 13:10 - xlSimple: started version numbering
+
+If RunningManually Then t0 = Now
+Dim rHdr As Range, rList As Range, rThis As Range
+'On Error Resume Next
+Application.DisplayAlerts = False
+Application.ScreenUpdating = False
+With ThisWorkbook.Sheets(sListSheetName)
+    Set rList = .Range("ReportList")
+    Set rHdr = rList.EntireRow
+    If rList.Offset(1) = "" Then Exit Sub
+    Set rList = .Range(rList.Offset(1), rList.End(xlDown))
+End With
+
+'errors in this section means headers have changed - update headers or below
+Dim cPath As Byte, cStarted As Byte, cCompleted As Byte, cEmails As Byte
+cPath = Application.Match("Path & Filename", rHdr, 0)
+cStarted = Application.Match("Last Started", rHdr, 0)
+cCompleted = Application.Match("Last Completed", rHdr, 0)
+cEmails = Application.Match("Notify Contacts", rHdr, 0)
+
+Dim xlApp As Excel.Application, wb As Workbook
+Dim sEmailTo As String, sEmailSubj As String, sEmailBody As String
+For Each rThis In rList.Cells
+'quit if approaching 1 hour run time, this will cause issues on VM
+    t1 = Now
+    If (t1 - t0) * 24 > 0.8 Then Exit Sub
+'otherwise continue
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.Visible = True
+    xlApp.DisplayAlerts = False
+    xlApp.ScreenUpdating = False
+    xlApp.EnableEvents = True
+'open and allow it to refresh save & quit
+    If Dir(rThis) <> "" Then
+        rThis.EntireRow.Cells(cStarted) = Now
+        SetAttr rThis, vbNormal
+        Set wb = xlApp.Workbooks.Open(rThis)    'this will refresh, save and quit
+        'xlApp.DisplayAlerts = False
+        'xlApp.ScreenUpdating = False
+        'continue with process
+        On Error Resume Next 'this forces to close & quit on error
+        If Not wb Is Nothing Then wb.Close
+        If Not xlApp Is Nothing Then xlApp.Quit
+        On Error GoTo 0
+        Set xlApp = Nothing
+        SetAttr rThis, vbReadOnly
+    '!! need an error handler above to prevent false update success notes
+        sReportList = sReportList & Dir(rThis) & vbLf   'added to list at the end
+        rThis.EntireRow.Cells(cCompleted) = Now
+        sEmailTo = rThis.EntireRow.Cells(cEmails).Text
+        sEmailSubj = "Report Updated: " & Dir(rThis)
+        sEmailBody = "<P>Report updated.  Link to file:<P><A HREF=" & Chr(34) & rThis & Chr(34) & ">" & rThis & "</A>"
+        modEmail.SendEmail sEmailTo _
+            , , "pcinsightvm@company.com" _
+            , sEmailSubj _
+            , sEmailBody _
+            , False, , , , , True, , , True
+        sEmailTo = ""
+        sEmailSubj = ""
+        sEmailBody = ""
+    Else
+    'no file, can't start, but leave last completed in place
+        rThis.EntireRow.Cells(cStarted) = "failed, no file"
+    End If
+Next rThis
+Application.DisplayAlerts = True
+Application.ScreenUpdating = True
+End Sub

@@ -1,0 +1,140 @@
+Attribute VB_Name = "xlTradingSummary"
+Option Explicit
+Option Compare Text
+
+'Standard code routines to work with Trading Summary report filters & buttons
+
+'Requires these range names to be created on report sheet for these functions to work:
+'   hide_PLNAD  3 rows: 2 filters for PNPL and NAD, plus a narrow empty row above, with a Data Group to cover this, and a normal width row below, to show the group + icon clearly, with text in adjacent cell, "'+ to show PN PL NAD filter"
+'   sel_NADOM   NA DOMESTIC filter
+'   sel_PNPL    PAY NOW / PAY LOCAL filter
+
+Public Const xlTradingSummaryCodeVer As String = _
+"xlTradingSummary v1.03"
+'v1.03 2017-06-26 15:00 - ShowHide_LTGroups: first release version
+'v1.02 2017-06-28 14:16 - changed order to make it work better with CDW/FP
+'v1.01 2017-06-28 14:16 - Toggle_PL_NAD_Click: added ShowHide_FPCDW to end of routine
+'                       - ShowHide_FPCDW: collapses LY columns afterwards
+'v1.00 2017-06-26 15:00 - first release version includes functions from TS WOW v2-01
+
+Function xlTradingSummaryVer() As String
+xlTradingSummaryVer = xlTradingSummaryCodeVer
+End Function
+
+Sub GroupToggle_Columns_Click()
+'v1.02 2017-06-28 14:16 - changed order to make it work better with CDW/FP
+'v1.00 2017-06-26 15:00 - first release version
+'toggles +/- for all column groups
+Const b As String = "Group Toggle Columns"  'button name
+With ActiveSheet
+    If .Buttons(b).Caption = "+ LY" Then
+    'expand all row groups
+        .Buttons(b).Caption = "- LY"
+        .Outline.ShowLevels ColumnLevels:=2
+    Else
+    'contract all row groups
+        .Buttons(b).Caption = "+ LY"
+        .Outline.ShowLevels ColumnLevels:=1
+    End If
+End With
+Call ShowHide_FPCDW
+End Sub
+
+Sub Toggle_PL_NAD_Click()
+'v1.02 2017-06-28 14:16 - changed order to make it work better with CDW/FP
+'v1.01 2017-06-28 14:16 - added ShowHide_FPCDW to end of routine
+'v1.00 2017-06-26 15:00 - first release version
+'show/hide PL/NAD
+'link this macro to the "Show PL+NAD" button action
+'this button click should force correction of Calcs and Events
+Const b As String = "Toggle PL NAD"  'button name
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
+Application.EnableEvents = False
+With ActiveSheet
+    If .Buttons(b).Caption = "Show PL+NAD" Then
+        If .Range("hide_PLNAD").EntireRow.Hidden = True Then .Range("hide_PLNAD").EntireRow.Hidden = False
+        If .Range("SEL_NADOM").Value <> "NA DOMESTIC" Then .Range("SEL_NADOM").Value = "NA DOMESTIC"
+        If .Range("SEL_PNPL").Value <> "PAY LOCAL" Then .Range("SEL_PNPL").Value = "PAY LOCAL"
+        ActiveSheet.Buttons(b).Caption = "Show PN+ALL"
+    Else
+        If .Range("hide_PLNAD").EntireRow.Hidden = False Then .Range("hide_PLNAD").EntireRow.Hidden = True
+        If .Range("SEL_NADOM").Value <> "ALL" Then .Range("SEL_NADOM").Value = "ALL"
+        If .Range("SEL_PNPL").Value <> "PAY NOW" Then .Range("SEL_PNPL").Value = "PAY NOW"
+        .Buttons(b).Caption = "Show PL+NAD"
+    End If
+End With
+Call ShowHide_FPCDW
+Application.ScreenUpdating = bASU
+Application.EnableEvents = True
+Application.Calculation = xlCalculationSemiautomatic
+End Sub
+
+Sub ShowHide_FPCDW()
+'v1.02 2017-06-28 14:16 - changed order to make it work better with CDW/FP
+'v1.01 2017-06-28 14:16 - collapses LY columns afterwards
+'v1.00 2017-06-26 15:00 - first release version
+'show/hide FP/CDW
+'call this macro whenever a change could impact on the PN/PL selection, e.g. button click
+'this button click should force correction of Calcs and Events
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
+Application.EnableEvents = False
+Dim allColumns As Range, sel_PNPL As Range
+With ActiveSheet
+    Set sel_PNPL = .Range("sel_PNPL")
+    If sel_PNPL.Value = "PAY NOW" Then
+        If .Range("hide_FP").EntireColumn.Hidden = True Then .Range("hide_FP").EntireColumn.Hidden = False
+        If .Range("hide_CDW").EntireColumn.Hidden = False Then .Range("hide_CDW").EntireColumn.Hidden = True
+        If .Range("hide_CI").EntireColumn.Hidden = True Then .Range("hide_CI").EntireColumn.Hidden = False
+    ElseIf sel_PNPL.Value = "PAY LOCAL" Then
+        If .Range("hide_FP").EntireColumn.Hidden = False Then .Range("hide_FP").EntireColumn.Hidden = True
+        If .Range("hide_CDW").EntireColumn.Hidden = True Then .Range("hide_CDW").EntireColumn.Hidden = False
+        If .Range("hide_CI").EntireColumn.Hidden = False Then .Range("hide_CI").EntireColumn.Hidden = True
+    ElseIf sel_PNPL.Value = "ALL" Then
+        If .Range("hide_FP").EntireColumn.Hidden = True Then .Range("hide_FP").EntireColumn.Hidden = False
+        If .Range("hide_CDW").EntireColumn.Hidden = True Then .Range("hide_CDW").EntireColumn.Hidden = False
+        If .Range("hide_CI").EntireColumn.Hidden = True Then .Range("hide_CI").EntireColumn.Hidden = False
+    End If
+'if LY hidden, collapse all LY columns, as they will have been shown by the above routine
+    If .Buttons("Group Toggle Columns").Caption = "+ LY" Then .Outline.ShowLevels ColumnLevels:=1
+'if LY shown, expand all LY columns, as they will have been hidden by the above routine
+    If .Buttons("Group Toggle Columns").Caption = "- LY" Then .Outline.ShowLevels ColumnLevels:=2
+End With
+Application.ScreenUpdating = bASU
+Application.EnableEvents = True
+Application.Calculation = xlCalculationSemiautomatic
+End Sub
+
+Sub ShowHide_LTGroups()
+'v1.03 2017-06-26 15:00 - first release version
+'show/hide rows below LT Groups (only a limited number of groups)
+'call this macro whenever a change could impact on the PN/PL selection, e.g. button click
+'this button click should force correction of Calcs and Events
+Dim bASU As Boolean
+bASU = Application.ScreenUpdating
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
+Application.EnableEvents = False
+Dim allColumns As Range, sel_LTGroups As Range
+With ActiveSheet
+    Set sel_LTGroups = .Range("SEL_VIEW")
+    If sel_LTGroups.Value = "LEAD TIME GROUPS" Then
+        If .Range("hide_LTGroups").EntireColumn.Hidden = False Then .Range("hide_LTGroups").EntireColumn.Hidden = True
+    Else
+        If .Range("hide_LTGroups").EntireColumn.Hidden = True Then .Range("hide_LTGroups").EntireColumn.Hidden = False
+    End If
+'if LY hidden, collapse all LY columns, as they will have been shown by the above routine
+    If .Buttons("Group Toggle Columns").Caption = "+ LY" Then .Outline.ShowLevels ColumnLevels:=1
+'if LY shown, expand all LY columns, as they will have been hidden by the above routine
+    If .Buttons("Group Toggle Columns").Caption = "- LY" Then .Outline.ShowLevels ColumnLevels:=2
+End With
+Application.ScreenUpdating = bASU
+Application.EnableEvents = True
+Application.Calculation = xlCalculationSemiautomatic
+End Sub
+

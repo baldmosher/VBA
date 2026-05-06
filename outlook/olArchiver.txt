@@ -1,0 +1,64 @@
+Attribute VB_Name = "olArchiver"
+Option Explicit
+Option Compare Text
+
+Sub efedoraExample()
+'https://www.experts-exchange.com/questions/22731876/moving-a-message-from-one-mailbox-to-another-with-VBA.html
+ Dim i As Integer
+ Dim vFolder1 As Outlook.MAPIFolder
+ Dim vFolder2 As Outlook.MAPIFolder
+ Dim olApp As Outlook.Application
+ Set olApp = CreateObject("outlook.application")
+ Dim objNS As Outlook.NameSpace: Set objNS = GetNamespace("MAPI")
+
+ Set vFolder1 = objNS.GetDefaultFolder(olFolderInbox)
+ Set vFolder1 = vFolder1.Folders("Archive").Folders("2016")
+ Set vFolder2 = olApp.ActiveExplorer.CurrentFolder
+ Set vFolder2 = olApp.Session.Folders("Archive - ProductQuery@company.com").Folders("Inbox").Folders("Archive").Folders("2016")
+
+ Debug.Print Now & " (started)"
+ While vFolder1.Items.Count > 0
+    vFolder1.Items(1).Move vFolder2
+    i = i + 1
+    If i > 20000 Then GoTo QuitSub
+ Wend
+ Set vFolder1 = Nothing
+ Set vFolder2 = Nothing
+ Set olApp = Nothing
+QuitSub:
+Debug.Print Now & " (moved " & i & ")"
+olReminders.Relaunch_Appointments
+End Sub
+
+Sub efedoraShortenedExample()
+ Dim olApp As Object
+ Set olApp = CreateObject("outlook.application")
+ olApp.Session.Folders("Mailbox - Your name").Folders("Receipts").Items(1).Move _
+  olApp.Session.Folders("Mailbox - Department").Folders("Receipts")
+ Set olApp = Nothing
+End Sub
+
+Sub olDoneAged(olMail As Outlook.MailItem)
+ 
+ Dim vFolder1 As Outlook.MAPIFolder
+ Dim vFolder2 As Outlook.MAPIFolder
+
+On Error Resume Next
+ Set vFolder1 = olMail.Parent
+ Set vFolder2 = vFolder1.Folders("Done Aged > 90 days") 'need to check if this is the same in all inboxes, but it's fine for SS
+On Error GoTo 0
+ If vFolder1 Is Nothing Or vFolder2 Is Nothing Then
+    'Debug.Print "olDoneAged: Failed to find Done Aged folder"
+    Exit Sub
+ End If
+On Error GoTo QuitSub
+ olMail.Move vFolder2
+ Set vFolder1 = Nothing
+ Set vFolder2 = Nothing
+    'Debug.Print "olDoneAged: moved 1 mail to Done Aged folder"
+Exit Sub
+QuitSub:
+ 'Debug.Print "olDoneAged: Failed to move olMail"
+End Sub
+
+

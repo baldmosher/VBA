@@ -1,0 +1,426 @@
+Attribute VB_Name = "xlAuditLogger"
+'xlAuditLogger
+
+'Summary:
+'Updates Audit table with source data, change settings below for audit table and fields to update
+
+Public sManagersToEmail As String
+Private Const sComplianceUploadSchema As String = "Compliance"
+Private Const sComplianceTable As String = "[Compliance].[Commercial_STAGING].[Staging_Responses]"
+Private Const sAdminEmails As String = "recipient@company.com; recipient@company.com; recipient@company.com"
+
+'Version History:
+Public Const xlAuditLoggerCodeVer As String = _
+"xlAuditLogger v6.14"
+'v6.14 2020-03-24 14:29 - msgbox changed on error and bugfix in uSQL date formatting
+'v6.13 2020-03-19 14:00 - msgbox changed on error
+'v6.12 2020-03-18 21:40 - runs modExtra.do_extras_first before submitting, to clear any potential cell/SQL formatting errors
+'v6.11 2020-03-18 16:11 - minor code cleanups
+'v6.10 2020-03-18 12:40 - bugfix in close routine, added dropout clause if no comments found / no changes
+'v6.05 2020-02-27 09:59 - changing table reference to new location in commercial staging
+'v6.05 2020-02-21 15:56 - removed refresh after submit, and Ends when there's an error ('!! this needs to be more user friendly as it still asks to close the file)
+'v6.04 2020-02-21 14:21 - bugfix in ranges (r.Row-1). Added submission of Exception_Creation_Date
+'v6.03 2020-02-12 16:11 - added validity check for mandatory comments (e.g. IT Issue requires Jira ticket ref)
+'v6.01 2020-02-10 10:55 - TP: added Rahul's new DMX VBA code to Insert_Audit_Table
+'v6.00 2020-02-10 10:43 - RD: copied Insert_Audit_Table from Update_Audit_Table (old DMX/IMX routine) (**not working**)
+'v3.05 2019-07-17 09:02 - added fn_Check_DMX_Comments: checks for comments by user before submit
+'v3.04 2019-07-16 08:28 - Update_Audit_Table_xMX: records submitted date from email
+'v3.03 2019-04-30 14:49 - Update_Audit_Table_xMX: bugfix for non-numeric Reservation
+'v3.02 2019-02-27 15:26 - Update_Audit_Table_xMX: merged DMX and IMX into one
+'v3.01 2019-02-26 13:40 - Update_Audit_Table_DMX: updates [Authorised_Date]
+'v3.00 2019-02-18 14:56 - Update_Audit_Table: split into DMX and IMX
+'v2.19 2019-02-18 14:55 - added IMX and DMX separately
+'v2.18 2019-01-14 14:44 - Update_Audit_Table: changed [reserv_num] to [Reservation]
+'v2.17 2018-12-17 17:20 - Update_Audit_Table: added errorhandler, returns errrors to submitter
+'v2.16 2018-12-12 17:46 - Update_Audit_Table: removed Modification_Date filter, it may be preventing logging
+'v2.15 2018-12-12 14:05 - Update_Audit_Table: removed P1 code
+'v2.14 2018-08-10 12:25 - changed CommandTimeout from 10 to 30, amended clustered index on DB table, this should stop timeout errors
+'v2.13 2018-08-10 12:25 - changed CommandTimeout from 5 to 10, possible bugfix attempt?
+'v2.12 2018-05-31 16:23 - minor tweak to uSQL, prevents relogging and overwriting older submissions
+'v2.11 2018-04-12 12:04 - bugfix from v2.10, logging was disabled
+'v2.10 2018-04-06 13:02 - added list of P1 Managers to the response email to the submitter
+'v2.09 2017-06-22 12:07 - bugfix on Auth date format
+'v2.08 2017-05-09 17:08 - updated to PC schema
+'v2.07 2017-04-18 16:50 - fn_Check_DMX_Validity  bugfix
+'v2.06 2017-04-18 10:59 - fn_Check_DMX_Validity  bugfix
+'v2.05 2017-04-13 13:53 - added fn_Check_DMX_Validity to check report before submitting
+'v2.04 2017-02-20 16:20 - code tidy up
+'v2.03 2017-01-26 16:51 - set connection timeout to 5 minutes (plenty of time)
+'v2.02 2017-01-25 10:49 - added late binding and xlAuditLoggerVer
+'v2.01 2017-01-12 14:56 - ONLY runs ad-hoc from user submissions / authorisations
+'v2.00 2017-01-11 16:40 - runs ad-hoc from user submissions
+'v1.06 2017-01-05 17:28 - performance gains and works with email submisions
+'v1.05 2016-12-14 09:05 - fixed columns going weird on P1 sheet
+'v1.04 2016-12-13 15:20 - slight code improvements
+'v1.03 2016-12-09 15:54 - bugfix
+'v1.02 2016-12-09 14:48 - added P1 updates
+'v1.01 2016-12-09 14:48 - added Audit table updates
+
+Option Explicit
+Option Compare Text
+
+Public Function xlAuditLoggerVer() As String
+xlAuditLoggerVer = xlAuditLoggerCodeVer
+End Function
+
+Sub Insert_Audit_Table(Optional ByVal sUser As String, Optional ByVal dSubmitted As Double)
+'updates comments etc. to the server for all xMX reports
+'runs on request from user submissions, or nightly from the daily report, prior to refreshing query
+'v6.12 2020-03-18 21:40 - runs modExtra.do_extras_first before submitting, to clear any potential cell/SQL formatting errors
+'v6.01 2020-02-10 10:55 - TP: added Rahul's new DMX VBA code to Insert_Audit_Table
+'v6.00 2020-02-10 10:43 - copied from Update_Audit_Table (old DMX/IMX routine)
+
+Const DoDebug As Boolean = False
+
+If dSubmitted = 0 Then dSubmitted = Now
+
+modExtra.do_extras_first 'resets formatting just in case you've pasted a TXT file
+
+xlAuditLogger.Insert_Audit_Table_xMX "DMX", sComplianceTable, sUser, DoDebug, dSubmitted
+
+End Sub
+
+Sub Insert_Audit_Table_xMX(ByVal xMX As String, ByVal sqlAuditTable As String, ByVal sUser As String, ByVal DoDebug As Boolean _
+    , Optional ByVal dSubmitted As Double)
+'allows users to send comments etc. directly to SQL server
+'ODBC connection and writer access required on Compliance DB, see https://confluence.bookinggo.io/pages/viewpage.action?pageId=70093636
+'admin can also run Insert_Audit_Table "username" to log
+'DoDebug = faster if False, if True can check code & timing in Immediate pane
+'v6.14 2020-03-24 14:29 - msgbox changed on error and bugfix in uSQL date formatting
+'v6.13 2020-03-19 14:00 - msgbox changed on error
+'v6.11 2020-03-18 16:11 - minor code cleanup
+'v6.05 2020-02-21 15:56 - removed refresh after submit, and Ends when there's an error ('!! this needs to be more user friendly as it still asks to close the file)
+'v6.01 2020-02-10 10:55 - TP: added Rahul's new DMX VBA code to Insert_Audit_Table
+'v6.00 2020-02-10 10:43 - copied from Update_Audit_Table_xMX (old DMX/IMX routine)
+
+'!! NOTE: ALL DATE FORMATS MUST BE CONVERTED TO "yyyy-mm-dd hh:mm:ss" in uSQL
+
+Dim sErrorLog As String, lErrorLog As Long
+
+Dim sTblRange As String
+sTblRange = "Table_" & xMX
+Dim sSheet As Worksheet
+Set sSheet = Sheets(xMX)
+
+Dim t0 As Double, t1 As Double, t2 As Double, i As Long
+
+t0 = Now
+
+On Error GoTo CannotConnect
+Dim cnnstr As String, cnn As Object  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = CreateObject("ADODB.Connection")
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=bi-01; " & _
+            "Initial Catalog=" & sComplianceUploadSchema & ";" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 30
+cnn.Open cnnstr
+On Error GoTo 0
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sReason As String, sPriority As String, sComments As String, sAuthorised_Date As String, sUsername As String, iException As Long, sExcreat As String, iReservation As Long
+
+Dim rTable As Range, r As Long, rmax As Long
+Set rTable = Range(sTblRange)
+rmax = rTable.Rows.Count
+
+For r = 1 To rmax
+    With sSheet
+        If Range(sTblRange & "[Reservation]").Rows(r) = "" Then Exit For
+        If IsNumeric(Range(sTblRange & "[Reservation]").Rows(r)) = False Then Exit For
+        iReservation = .Range(sTblRange & "[Reservation]").Rows(r)
+        iException = .Range(sTblRange & "[Exception_ID]").Rows(r)
+        sExcreat = .Range(sTblRange & "[Exception_Creation_Date]").Rows(r)
+        sReason = Replace(.Range(sTblRange & "[Reason]").Rows(r), "'", "")
+        sComments = Replace(.Range(sTblRange & "[Comments]").Rows(r), "'", "")
+        sUsername = Replace(.Range(sTblRange & "[Username]").Rows(r), "'", "")
+        sAuthorised_Date = Replace(Format(dSubmitted, "yyyy-mm-dd hh:nn:ss"), "'", "")
+    End With
+    
+'!! NOTE: ALL DATE FORMATS MUST BE CONVERTED TO "yyyy-mm-dd hh:mm:ss" in uSQL
+    uSQL = "INSERT INTO " & sqlAuditTable & " " & vbLf & _
+            "  ([Exception_ID], [Reservation], [Exception_Creation_Date], [Reason], [Comments], [UserName], [Authorised_Date], [Creation_Date], [Modification_Date], [HK_Audit_ID])" & vbLf & _
+            "VALUES (" & iException & ", " & iReservation & ", '" & sExcreat & "', '" & sReason & "', '" & sComments & "', '" & sUsername & "', '" & sAuthorised_Date & "', '" & Format(Now, "yyyy-mm-dd hh:nn:ss") & "', '" & Format(Now, "yyyy-mm-dd hh:nn:ss") & "', 0);"
+    If DoDebug Then Debug.Print (uSQL)
+'only updates when Reason is changed from default AND Username matches submission
+    If sReason <> "select" And sUser = sUsername Then
+On Error GoTo CompileErrorLog
+        cnn.Execute uSQL
+On Error GoTo 0
+        t2 = Now
+        If DoDebug Then Debug.Print "Updated " & r & " rows: " & Format(t2 - t1, "hh:nn:ss")
+        i = i + 1
+    End If
+    t1 = Now
+Next r
+
+Debug.Print "Updated " & i & " of " & r - 1 & " rows: " & Format(t2 - t0, "hh:nn:ss")
+cnn.Close
+Set cnn = Nothing
+
+If sErrorLog <> "" Then
+'send failures back to the submitter
+    MsgBox "Owing to an error, the following " & lErrorLog & " responses were not logged.  Please close and save the file.  It will now be sent as an attachment to P&C Insight to be loaded manually.  They will confirm when it's been loaded.", vbExclamation, ""
+    ThisWorkbook.Save
+    modEmail.SendEmail sAdminEmails, sUser, , "Daily Margin Exceptions: responses not logged", "Owing to an error, the attached " & lErrorLog & " responses were not logged.  Please log this manually from the attachment.  If this issue persists, please contact [redacted] for support." & vbLf & vbLf & sErrorLog, , ThisWorkbook.FullName, , , , , , , True
+    'modEmail.SendEmail sUser, , , "Daily Margin Exceptions: not all responses logged", "Owing to an error, the following " & lErrorLog & " responses were not logged.  Please try again.  If this issue persists, please contact P&C Insight." & vbLf & vbLf & sErrorLog, , , , , , , , , True
+End If
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+'Application.EnableEvents = False
+'If InStr(Application.Caption, "read-only") = 0 Then xlBackgroundRefresh.Background_Refresh_And_Wait True
+'Application.EnableEvents = True
+
+Exit Sub
+CompileErrorLog:
+    Debug.Print uSQL
+    If sErrorLog = "" Then
+        sErrorLog = "" & iException
+    Else
+        sErrorLog = sErrorLog & vbLf & iException
+    End If
+    lErrorLog = lErrorLog + 1
+    Resume Next
+CannotConnect:
+    MsgBox "Cannot connect to database - please contact P&C Insight for support", vbCritical, ""
+End Sub
+
+Sub Update_Audit_Table(Optional ByVal sUser As String, Optional ByVal dSubmitted As Double)
+'DEFUNCT -- replaced by new Compliance_STAGING process and Insert_Audit_Table "username"
+'updates comments etc. to the server for all xMX reports
+'runs on request from user submissions, or nightly from the daily report, prior to refreshing query
+'v6.12 2020-03-18 21:40 - runs modExtra.do_extras_first before submitting, to clear any potential cell/SQL formatting errors
+'v3.04 2019-07-16 08:28 - Update_Audit_Table: records submitted date from email
+'v3.02 2019-02-27 15:26 - Update_Audit_Table: merged DMX and IMX back into one
+'v3.00 2019-02-18 14:56 - Update_Audit_Table: split into DMX and IMX
+
+Const DoDebug As Boolean = False
+
+If dSubmitted = 0 Then dSubmitted = Now
+
+modExtra.do_extras_first 'resets formatting just in case you've pasted a TXT file
+
+xlAuditLogger.Update_Audit_Table_xMX "DMX", "[PandC_Sandpit].[PC].[Fct_Audit_Daily_Margin_Exceptions]", sUser, DoDebug, dSubmitted    'DMX will be the main report eventually
+'Update_Audit_Table_xMX "IMX", "[PandC_Sandpit].[CD].[Fct_Insurance_Exceptions]", sUser, DoDebug, dSubmitted
+
+End Sub
+
+Sub Update_Audit_Table_xMX(ByVal xMX As String, ByVal sqlAuditTable As String, ByVal sUser As String, ByVal DoDebug As Boolean _
+    , Optional ByVal dSubmitted As Double)
+'DEFUNCT -- replaced by new Compliance_STAGING process and Insert_Audit_Table "username"
+'updates comments etc. to the server
+'runs on request from user submissions, or nightly from the daily report, prior to refreshing query
+'DoDebug = faster if False, if True can check code & timing in Immediate pane
+'v3.04 2019-07-16 08:28 - Update_Audit_Table_xMX: records submitted date from email
+'v3.03 2019-04-30 14:49 - Update_Audit_Table_xMX: bugfix for non-numeric Reservation
+'v3.02 2019-02-27 15:26 - Update_Audit_Table_xMX: merged DMX and IMX into one
+'v3.01 2019-02-26 13:40 - Update_Audit_Table: updates [Authorised_Date]
+'v3.00 2019-02-18 14:56 - Update_Audit_Table: split into DMX and IMX
+'v2.18 2019-01-14 14:44 - Update_Audit_Table: changed [reserv_num] to [Reservation]
+'v2.17 2018-12-17 17:20 - Update_Audit_Table: added errorhandler, returns errrors to submitter
+'v2.16 2018-12-12 17:46 - Update_Audit_Table: removed Modification_Date filter, it may be preventing logging
+'v2.15 2018-12-12 14:05 - Update_Audit_Table: removed P1 code
+'v2.14 2018-08-10 12:25 - changed CommandTimeout from 10 to 30, amended clustered index on DB table, this should stop timeout errors
+'                       - changed Priority to always show "n/a" no matter what is selected
+'v2.13 2018-08-10 12:25 - changed CommandTimeout from 5 to 10, possible bugfix attempt?
+'v2.12 2018-05-31 16:23 - minor tweak to uSQL, prevents relogging and overwriting older submissions
+'v2.11 2018-04-12 12:04 - bugfix from v2.10, logging was disabled
+'v2.10 2018-04-06 13:02 - added list of P1 Managers to the response email to the submitter
+'v2.09 2017-06-22 12:07 - bugfix on Auth date format
+'v2.08 2017-05-09 17:08 - updated to PC schema
+'v2.05 2017-04-13 13:53 - added fn_Check_DMX_Validity to check report before submitting
+'v2.04 2017-02-20 16:20 - code tidy up
+'v2.03 2017-01-26 16:51 - set connection timeout to 5 minutes (plenty of time)
+'v2.01 2017-01-12 14:56 - ONLY runs ad-hoc from user submissions / authorisations
+'v2.00 2017-01-11 16:40 - runs ad-hoc from user submissions / authorisations
+'v1.06 2017-01-05 17:28 - performance gains and works with email submissions
+'v1.03 2016-12-09 15:54 - bugfix
+'v1.01 2016-12-09 14:48 - added Audit table updates
+
+Dim sErrorLog As String, lErrorLog As Long
+
+Dim sTblRange As String
+sTblRange = "Table_" & xMX
+Dim sSheet As Worksheet
+Set sSheet = Sheets(xMX)
+
+Dim t0 As Double, t1 As Double, t2 As Double, i As Long
+
+t0 = Now
+
+Dim cnnstr As String, cnn As Object  'requires reference for Microsoft ActiveX Data Objects Library v2.0 or later to be enabled
+Dim uSQL As String
+Set cnn = CreateObject("ADODB.Connection")
+cnnstr = "Provider=SQLOLEDB;" & _
+            "Data Source=bi-01; " & _
+            "Initial Catalog=Compliance;" & _
+            "Trusted_Connection=Yes"
+cnn.CommandTimeout = 30
+cnn.Open cnnstr
+
+t1 = Now
+If DoDebug Then Debug.Print "Opened connection: " & Format(t1 - t0, "hh:nn:ss")
+
+Dim sOwner As String, sReason As String, sPriority As String, sComments As String, sModification_Date As String, sAuthorised_Date As String, sUsername As String, iReserv As Long, iException As Long
+
+Dim rTable As Range, r As Long, rmax As Long
+Set rTable = Range(sTblRange)
+rmax = rTable.Rows.Count
+
+For r = 1 To rmax
+    With sSheet
+        If Range(sTblRange & "[Reservation]").Rows(r) = "" Then Exit For
+        If IsNumeric(Range(sTblRange & "[Reservation]").Rows(r)) = False Then Exit For
+        iException = .Range(sTblRange & "[Exception_ID]").Rows(r)
+        sOwner = Replace(.Range(sTblRange & "[Owner]").Rows(r), "'", "")    'won't be used in RMX
+        sReason = Replace(.Range(sTblRange & "[Reason]").Rows(r), "'", "")
+        sComments = Replace(.Range(sTblRange & "[Comments]").Rows(r), "'", "")
+        sUsername = Replace(.Range(sTblRange & "[Username]").Rows(r), "'", "")
+        sAuthorised_Date = Replace(Format(dSubmitted, "yyyy-mm-dd hh:nn:ss"), "'", "")
+        sModification_Date = Replace(Format(Left(.Range(sTblRange & "[Modification_Date]").Rows(r), 19), "yyyy-mm-dd hh:nn:ss"), "'", "")
+    End With
+    
+    uSQL = "UPDATE " & sqlAuditTable & " " & vbLf & _
+            "SET [Owner] = '" & sOwner & "'," & vbLf & _
+            "    [Reason] = '" & sReason & "'," & vbLf & _
+            "    [Comments] = '" & sComments & "', " & vbLf & _
+            "    [Authorised_Date] = '" & sAuthorised_Date & "', " & vbLf & _
+            "    [Modification_Date] = '" & sModification_Date & "', " & vbLf & _
+            "    [Username] = '" & sUsername & "' " & vbLf & _
+            "WHERE [Reservation] = " & iReserv & vbLf & _
+            "" '    AND [Modification_Date] < '" & sModification_Date & "'  -- this prevents doing it twice or overwriting others submitting earlier"
+    If DoDebug Then Debug.Print (uSQL)
+'only updates when Reason is changed from default AND Username matches submission
+    If sReason <> "select" And sUser = sUsername Then
+On Error GoTo CompileErrorLog
+        cnn.Execute uSQL
+On Error GoTo 0
+        t2 = Now
+        If DoDebug Then Debug.Print "Updated " & r & " rows: " & Format(t2 - t1, "hh:nn:ss")
+        i = i + 1
+    End If
+    t1 = Now
+Next r
+
+Debug.Print "Updated " & i & " of " & r - 1 & " rows: " & Format(t2 - t0, "hh:nn:ss")
+cnn.Close
+Set cnn = Nothing
+
+If sErrorLog <> "" Then
+'send failures back to the submitter
+    modEmail.SendEmail sUser, , , "Daily Margin Exceptions: not all exceptions logged", "Owing to an error, the following " & lErrorLog & " reservations were not logged.  Please try again.  If this issue persists, please contact P&C Insight." & vbLf & vbLf & sErrorLog, , , , , , , , , True
+End If
+
+Dim bAEE As Boolean
+bAEE = Application.EnableEvents
+Application.EnableEvents = False
+If InStr(Application.Caption, "read-only") = 0 Then xlBackgroundRefresh.Background_Refresh_And_Wait True
+Application.EnableEvents = True
+
+Exit Sub
+CompileErrorLog:
+    If sErrorLog = "" Then
+        sErrorLog = "" & iReserv
+    Else
+        sErrorLog = sErrorLog & vbLf & iReserv
+    End If
+    lErrorLog = lErrorLog + 1
+    Resume Next
+End Sub
+
+Sub Fix_Table_Cell_Validation()
+'this will fix the cell validation in specified columns
+    
+Const xmax As Byte = 1
+Dim xMX(1 To 2) As String, x As Byte
+xMX(1) = "DMX"
+xMX(2) = "IMX"
+For x = 1 To xmax
+    With Sheets(xMX(x)).Range("Table_" & xMX(x) & "[Reason]")
+        With .Validation
+            .Delete
+            .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+            xlBetween, Formula1:="=val_Exceptions_" & xMX(x)
+            .IgnoreBlank = True
+            .InCellDropdown = True
+            .InputTitle = ""
+            .ErrorTitle = ""
+            .InputMessage = ""
+            .ErrorMessage = ""
+            .ShowInput = True
+            .ShowError = True
+        End With
+    End With  'Range("Table_" & xmx(x) & "[Reason]")
+Next x
+End Sub
+
+Function fn_Check_xMX_Validity(ByVal xMX As String) As Boolean
+'v3.00 2019-02-25 11:28 - added IMX functions
+'v2.07 2017-04-18 16:50 - bugfix
+'v2.06 2017-04-18 10:59 - bugfix
+'v2.05 2017-04-13 13:53 - added fn_Check_DMX_Validity to check report before submitting
+'checks the mandatory columns are all in the right place (stops users from manipulating the layout which could break the upload routine)
+Dim rval As Range
+Set rval = Sheets(xMX & " Row Settings").Range("admin_FieldWidths_" & xMX).EntireRow
+Set rval = rval.Cells(Application.Match("Mand", rval, 0))
+Set rval = Sheets(xMX & " Row Settings").Range(rval.Offset(1), rval.End(xlDown).Offset(1, 0))
+Dim rHdr As Range
+Set rHdr = Sheets(xMX).Rows(1)
+On Error Resume Next
+Dim r As Range, v As Variant
+For Each r In rval.Cells
+    If r = True Then  'mandatory header - look for it in rHdr
+        v = Application.Match(r.EntireRow.Cells(1), rHdr, 0)
+        If IsError(v) Then MsgBox r.EntireRow.Cells(1)
+    End If
+Next r
+fn_Check_xMX_Validity = True
+End Function
+
+Function fn_Check_xMX_Comments(ByVal xMX As String) As Boolean
+'v6.10 2020-03-18 12:40 - bugfix in close routine, added dropout clause if no comments found / no changes
+'v6.04 2020-02-21 14:21 - bugfix in ranges (r.Row-1)
+'v6.03 2020-02-12 16:11 - added validity check for mandatory comments (e.g. IT Issue requires Jira ticket ref)
+'v3.05 2019-07-17 09:02 - added fn_Check_DMX_Comments: checks if any comments by user exist before submitting
+
+Dim rReason As Range, rComment As Range
+Dim rUser As Range, r As Range, u As String
+
+'1. check username column to see if they actually submitted anything
+Set rUser = Sheets(xMX).Range("Table_DMX[Username]")
+On Error Resume Next
+u = Environ("Username")
+For Each r In rUser.Cells
+    If r = u Then GoTo CommentFound
+Next r
+Exit Function
+
+CommentFound:
+'2. check Comments exist for Reasons where a Comment is mandatory
+Set rReason = Sheets(xMX).Range("Table_DMX[Reason]")
+Set rComment = Sheets(xMX).Range("Table_DMX[Comments]")
+On Error Resume Next
+u = Environ("Username")
+For Each r In rUser.Cells
+    If r = u Then
+        If rReason.Cells(r.Row - 1) = "IT Issue" _
+        Or rReason.Cells(r.Row - 1) = "Other" _
+        Or rReason.Cells(r.Row - 1) = "Agent Error" Then
+            If rComment.Cells(r.Row - 1) = "" Then
+                MsgBox "Warning: cannot submit blank comment for Agent Error, IT Issue, or Other.  Please add relevant comment.", vbExclamation, ""
+                Application.GoTo rComment.Cells(r.Row - 1)
+                fn_Check_xMX_Comments = False
+                Exit Function  '!! note: this does NOT cancel the process of closing the workbook
+            End If
+        End If
+    End If
+Next r
+
+
+
+fn_Check_xMX_Comments = True
+End Function

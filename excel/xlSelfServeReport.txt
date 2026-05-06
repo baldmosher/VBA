@@ -1,0 +1,102 @@
+Attribute VB_Name = "xlSelfServeReport"
+Option Explicit
+Option Compare Text
+
+Public Const cReportName As String = "One Way Fees"
+
+Sub restore_pivot_to_default_connection()
+
+Dim cn As Object
+If ThisWorkbook.Connections.Count > 1 Then
+    On Error GoTo ErrorHandlerNoAccess
+    shPivot.PivotTables("ptData").ChangeConnection ThisWorkbook.Connections(cReportName & ", 1 supplier, 1 country (DEFAULT)")
+End If
+For Each cn In ThisWorkbook.Connections
+    If Left(cn.Name, 4) <> cReportName Then cn.Delete
+Next cn
+Exit Sub
+ErrorHandlerNoAccess:
+    modEmail.SendEmail "P&CInsight@company.com", "pcinsightvm@company.com", , "Update Failed: " & Replace(ThisWorkbook.Name, ".xlsb", ""), "Failed to update <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.FullName & "</a><p>Check MySQL access and retry" _
+        , False, , , , , True            'change to ", True" to test email
+    ThisWorkbook.Saved = True
+    Application.Quit
+End Sub
+
+Sub Publish_Report()
+'copies test file to P&C Tools folder
+Const pth As String = "Y:\RT\PC Insight Reports\Tools\" & cReportName & " self-serve.xlsb"
+If ThisWorkbook.FullName <> pth Then
+    If InStr("parisht nurzynskim", Environ("username")) > 0 Then
+        If MsgBox("Publish the updated report?", vbYesNo Or vbQuestion, "") = vbYes Then
+            SetAttr pth, vbNormal
+            Kill pth
+            ThisWorkbook.SaveCopyAs pth
+            SetAttr pth, vbReadOnly
+        End If
+    End If
+End If
+End Sub
+
+Sub Produce_Report(ByVal sSupplier As String, ByVal sCountry As String)
+'refreshes, creates data sheet, and optionally saves a copy to shared drive
+
+With admin_Settings
+    If sSupplier = "" Then sSupplier = .Range("admin_Supplier") Else .Range("admin_Supplier") = sSupplier
+    If sCountry = "" Then sCountry = .Range("admin_Country") Else .Range("admin_Country") = sCountry
+End With
+
+Call restore_pivot_to_default_connection
+
+Dim cn As Object, cnCTcurrent As String, cnCTchangeto As String
+Set cn = ThisWorkbook.Connections(cReportName & ", 1 supplier, 1 country (DEFAULT)")
+cnCTcurrent = cn.ODBCConnection.CommandText
+'change CommandText from default to chosen
+cnCTchangeto = cnCTcurrent
+cnCTchangeto = Replace(cnCTchangeto, "%SUPPLIERNAME%", sSupplier)
+cnCTchangeto = Replace(cnCTchangeto, "%COUNTRYNAME%", sCountry)
+cn.ODBCConnection.CommandText = cnCTchangeto
+
+'create data sheet from pivot
+Dim rTable As Range
+Set rTable = shPivot.PivotTables(1).TableRange2
+Set rTable = rTable.Cells(rTable.Rows.Count, rTable.Columns.Count)
+On Error GoTo NoData
+    rTable.ShowDetail = True
+On Error GoTo 0
+    
+'create report from data sheet
+Dim wb As Workbook
+ActiveSheet.Move
+Set wb = ActiveWorkbook
+wb.Sheets(1).Name = sCountry & " " & sSupplier
+
+'create report from data sheet
+Dim pth As String
+pth = admin_Settings.Range("admin_OutputPath")
+If Right(pth, 1) <> "\" Then pth = pth & "\"
+If Dir(pth, vbDirectory) = "" Then MkDir pth
+pth = pth & Replace(ActiveSheet.Name, "%", "") & " " & Format(Now, "yyyy-mm-dd") & ".xlsb"
+If Dir(pth) <> "" Then
+    SetAttr pth, vbNormal
+    Kill pth
+End If
+wb.SaveAs pth, 50
+wb.Close False
+SetAttr pth, vbReadOnly
+
+NoData:
+End Sub
+
+Sub Request_Report(ByVal sSupplier As String, ByVal sCountry As String)
+'sends email to pcinsightvm to produce report
+
+With admin_Settings
+    If sSupplier = "" Then sSupplier = .Range("admin_Supplier") Else .Range("admin_Supplier") = sSupplier
+    If sCountry = "" Then sCountry = .Range("admin_Country") Else .Range("admin_Country") = sCountry
+End With
+
+modEmail.SendEmail "pcinsightvm@company.com", "", "", "TRIGGER: " & cReportName & " Report", "Country: " & sCountry & vbLf & "Supplier: " & sSupplier & vbLf & "Requestor: " & Environ("Username")
+
+MsgBox "Report will be created, check your emails", vbInformation, ""
+
+End Sub

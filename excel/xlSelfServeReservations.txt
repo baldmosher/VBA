@@ -1,0 +1,219 @@
+Attribute VB_Name = "xlSelfServeReservations"
+Option Explicit
+Option Compare Text
+
+Private Const sEmailTo As String = "recipient@company.com; recipient@company.com"
+Private Const sEmailCC As String = "pcinsightvm@company.com"
+
+'Version History:
+Public Const xlSelfServeReservationsCodeVer As String = _
+"xlSelfServeReservations v1.53" 'match this to report version number, not code version number
+'v1.53 2020-11-10 16:57 - added sBillingID, admin_WHERE, etc. to enable PU/DO filter
+'v1.51 2019-10-24 11:38 - added sLocationPU/DO, admin_WHERE, etc. to enable PU/DO filter
+'v1.50 2019-10-21 17:47 - updated range names
+'v1.49 2019-05-20 17:08 - Produce_Report / PII_Selected: fix for GDPR: adds password protection if PII is included
+'v1.44 2019-01-18 13:28 - Publish_Report bugfix: handles output paths with & without final \
+'v1.43 2018-08-24 15:09 - added comment about CDO emails
+'v1.42 2018-08-22 17:27 - added OneWayOnly option
+'v1.20 2017-10-10 14:46 - removed IncludeCanx option, it's covered by Duration=0
+'                       - improved error message when running query without MySQL access
+'                       - hidden pivot sheet
+'v1.19 2017-10-10 12:27 - tweaked Duration and Age filters to cover blanks
+'v1.18 2017-10-10 12:23 - added Duration filter
+'v1.16 2017-10-06 09:46 - added IncludeCanx option
+'v1.15 2017-09-12 11:13 - added AgeMin/Max filters
+'v1.10 2017-06-12 12:17 - added PII (Customer Name only)
+'v1.09 2017-0?-?? ??:?? - added car_intern
+
+Sub restore_pivot_to_default_connection()
+'v1.20 2017-10-10 14:46 - improved error message when running query without MySQL access
+
+Dim cn As Object
+If ThisWorkbook.Connections.Count > 1 Then
+    Application.DisplayAlerts = False
+    On Error GoTo ErrorHandlerNoAccess
+    shPivot.PivotTables("ptReservations").ChangeConnection ThisWorkbook.Connections("Reservations (DEFAULT)")
+End If
+For Each cn In ThisWorkbook.Connections
+    If Left(cn.Name, 10) = "Connection" Then cn.Delete
+Next cn
+Exit Sub
+ErrorHandlerNoAccess:
+    Dim mbxr As VbMsgBoxResult
+    mbxr = MsgBox("ERROR: MySQL access failed", vbCritical Or vbOKCancel, "")
+    modEmail.SendEmail sEmailTo, sEmailCC, , "Update Failed: " & Replace(ThisWorkbook.Name, ".xlsb", ""), "Failed to update <a href=" & Chr(34) & ThisWorkbook.FullName & Chr(34) & ">" & ThisWorkbook.FullName & "</a><p>Check MySQL access/permissions/driver and retry.  Only P&C Insight users can do this." _
+        , False, , , , , True            'change to ", True" to test email
+    If mbxr <> vbCancel Then
+        ThisWorkbook.Saved = True
+        Application.Quit
+    End If
+End Sub
+
+Sub Produce_Report()
+'v1.53 2020-11-10 16:57 - added sBillingID, admin_WHERE, etc. to enable PU/DO filter
+'v1.51 2019-10-24 11:38 - added sLocationPU/DO, admin_WHERE, etc. to enable PU/DO filter
+'v1.50 2019-10-22 08:59 - bugfix: changed range names
+'v1.49 2019-05-20 17:08 - fix for GDPR: adds password protection if PII is included
+'v1.44 2019-01-18 13:28 - Publish_Report bugfix: handles output paths with & without final \
+'v1.20 2017-10-10 14:46 - removed IncludeCanx option, it's covered by Duration=0
+'v1.18 2017-10-10 12:23 - added Duration filter
+'v1.16 2017-10-06 09:46 - added IncludeCanx option
+'v1.10 2017-06-12 12:17 - added PII (Customer Name only)
+'v1.09 2017-0?-?? ??:?? - added car_intern
+'refreshes, creates data sheet, and optionally saves a copy to shared drive
+
+Const MaxRowLimit As Integer = 1001
+
+Dim sPassword As String
+
+Call restore_pivot_to_default_connection
+
+Application.Calculate   'ensures Query tab is up to date
+
+Dim cn As Object, cnCTcurrent As String, cnCTchangeto As String
+Set cn = ThisWorkbook.Connections("Reservations (DEFAULT)")
+cnCTcurrent = cn.ODBCConnection.CommandText
+'change CommandText from default to Query tab contents
+cnCTchangeto = Range("qry_SELECT") _
+                & Range("qry_SELECT_IncludePII") _
+                & Range("qry_FROM") _
+                & Range("qry_WHERE") _
+                & Range("qry_WHERE_Destination") _
+                & Range("qry_WHERE_Supplier") _
+                & Range("qry_WHERE_Product") _
+                & Range("qry_WHERE_Billing") _
+                & Range("qry_WHERE_Location_PU") _
+                & Range("qry_WHERE_Location_DO") _
+                & Range("qry_WHERE_Location_OW") _
+                & Range("qry_WHERE_car_intern") _
+                & Range("qry_WHERE_BDate") _
+                & Range("qry_WHERE_PUDate") _
+                & Range("qry_WHERE_Age") _
+                & Range("qry_WHERE_Duration") _
+                & Range("qry_LIMIT")
+cn.ODBCConnection.CommandText = cnCTchangeto
+
+'create data sheet from pivot
+Dim rTable As Range
+'shPivot.Visible = xlSheetVisible
+Set rTable = shPivot.PivotTables(1).TableRange2
+Set rTable = rTable.Cells(rTable.Rows.Count, rTable.Columns.Count)
+On Error GoTo NoData
+    rTable.ShowDetail = True
+On Error GoTo 0
+If Application.CountA(ActiveSheet.Columns(1)) = MaxRowLimit Then
+    ActiveSheet.Rows(1).Insert
+    With ActiveSheet.Cells(1, 1)
+        .Value = "WARNING: >1000 rows in data, report is incomplete, please contact P&C Insight for assistance"
+        .Font.ColorIndex = 3
+        .Font.Bold = True
+    End With
+End If
+
+'create report from data sheet
+Dim wb As Workbook, wsn As String
+ActiveSheet.Move
+Set wb = ActiveWorkbook
+'same code as below...
+If Range("admin_Destination") <> "" Then wsn = Range("admin_Destination") & " "
+If Range("admin_Product") <> "" Then
+    wsn = wsn & Range("admin_Product") & " "
+ElseIf Range("admin_Supplier") <> "" Then
+    wsn = wsn & Range("admin_Supplier") & " "
+End If
+If wsn = "" Then wsn = "NULL "
+'...but cleaned to fit sheet name
+wb.Sheets(1).Name = xlUtils.xlU_Clean_Special(wsn, True, , , True)
+
+'create report from data sheet
+Dim pth As String
+'...but cleaned to fit filename
+pth = admin_Settings.Range("admin_OutputPath")
+If Right(pth, 1) <> "\" Then pth = pth & "\"
+If Right(wsn, 1) <> " " Then wsn = wsn & " "
+pth = pth & xlUtils.xlU_Clean_Special(wsn, True, True) & Format(Now, "yyyy-mm-dd hhnnss") & ".xlsb"
+If Dir(pth) <> "" Then
+    SetAttr pth, vbNormal
+    Kill pth
+End If
+If admin_Settings.Range("admin_Include_PII") = True Then sPassword = "ResRequest" & Format(Now, "yyyymmdd")
+wb.SaveAs pth, 50, sPassword
+wb.Close False
+SetAttr pth, vbReadOnly
+
+NoData:
+End Sub
+
+Sub Request_Report(ByVal sSupplier As String, ByVal sDestination As String, ByVal sProduct As String, ByVal sBillingID As String, ByVal sLocationPU As String, ByVal sLocationDO As String _
+    , ByVal sCarIntern As String, ByVal sBDateFirst As String, ByVal sBDateLast As String, ByVal sPUDateFirst As String, ByVal sPUDateLast As String _
+    , ByVal sAgeMin As String, ByVal sAgeMax As String, ByVal sDurMin As String, ByVal sDurMax As String, ByVal sIncludePII As String, ByVal sOneWayOnly As String, ByVal sIncludeCanx As String)
+'!! when changing variables, also update Produce_Report, admin_Settings.CommandButton2_Click, and VBA on Outlook on VM
+'v1.53 2020-11-10 16:57 - added sBillingID, admin_WHERE, etc. to enable PU/DO filter
+'v1.51 2019-10-24 11:38 - added sLocationPU/DO, admin_WHERE, etc. to enable PU/DO filter
+'v1.50 2019-10-21 17:47 - updated range names
+'v1.43 2018-08-24 15:09 - added comment about CDO emails
+'v1.42 2018-08-22 17:27 - added OneWayOnly option
+'v1.20 2017-10-10 14:46 - removed IncludeCanx option, it's covered by Duration=0
+'v1.19 2017-10-10 12:27 - tweaked Duration and Age filters to cover blanks
+'v1.18 2017-10-10 12:23 - added Duration filter
+'v1.16 2017-10-06 09:46 - added IncludeCanx option
+'v1.15 2017-09-12 11:13 - added AgeMin/Max filters
+'v1.10 2017-06-12 12:17 - added PII (Customer Name only)
+'v1.09 2017-0?-?? ??:?? - added car_intern
+'sends email to pcinsightvm to produce report
+
+'VBA code and Rule to pick up this email must be handled in Outlook on VM
+With admin_Settings
+    If sSupplier = "" Then sSupplier = .Range("admin_Supplier") Else .Range("admin_Supplier") = sSupplier
+    If sDestination = "" Then sDestination = .Range("admin_Destination") Else .Range("admin_Destination") = sDestination
+    If sProduct = "" Then sProduct = .Range("admin_Product") Else .Range("admin_Product") = sProduct
+    If sBillingID = "" Then sBillingID = .Range("admin_BillingID") Else .Range("admin_BillingID") = sBillingID
+    If sLocationPU = "" Then sLocationPU = .Range("admin_Location_PU") Else .Range("admin_Location_PU") = sLocationPU
+    If sLocationDO = "" Then sLocationDO = .Range("admin_Location_DO") Else .Range("admin_Location_DO") = sLocationDO
+    If sCarIntern = "" Then sCarIntern = .Range("admin_car_intern") Else .Range("admin_car_intern") = sCarIntern
+    If sBDateFirst = "" Then sBDateFirst = Format(.Range("admin_BDateFirst"), "yyyy-mm-dd") Else .Range("admin_BDateFirst") = sBDateFirst
+    If sBDateLast = "" Then sBDateLast = Format(.Range("admin_BDateLast"), "yyyy-mm-dd") Else .Range("admin_BDateLast") = sBDateLast
+    If sPUDateFirst = "" Then sPUDateFirst = Format(.Range("admin_PUDateFirst"), "yyyy-mm-dd") Else .Range("admin_PUDateFirst") = sPUDateFirst
+    If sPUDateLast = "" Then sPUDateLast = Format(.Range("admin_PUDateLast"), "yyyy-mm-dd") Else .Range("admin_PUDateLast") = sPUDateLast
+    If sAgeMin = "" Then sAgeMin = Val(.Range("admin_AgeMin")) Else .Range("admin_AgeMin") = sAgeMin
+    If sAgeMax = "" Then sAgeMax = Val(.Range("admin_AgeMax")) Else .Range("admin_AgeMax") = sAgeMax
+    If sDurMin = "" Then sDurMin = Val(.Range("admin_DurMin")) Else .Range("admin_DurMin") = sDurMin
+    If sDurMax = "" Then sDurMax = Val(.Range("admin_DurMax")) Else .Range("admin_DurMax") = sDurMax
+    If sIncludePII = "" Then sIncludePII = .Range("admin_Include_PII") Else .Range("admin_Include_PII") = sIncludePII
+    If sOneWayOnly = "" Then sOneWayOnly = .Range("admin_Only_OneWay") Else .Range("admin_Only_OneWay") = sOneWayOnly
+    'If sIncludeCanx = "" Then sIncludeCanx = .Range("admin_Include_Canx") Else .Range("admin_Include_Canx") = sIncludeCanx
+End With
+
+'VBA code and Rule to pick up this email must be handled in Outlook on VM
+modEmail.SendEmail "pcinsightvm@company.com", "", "", "TRIGGER: Reservation Request Report" _
+    , "Destination: " & sDestination & vbLf _
+    & "Supplier: " & sSupplier & vbLf _
+    & "Product: " & sProduct & vbLf _
+    & "Billing: " & sBillingID & vbLf _
+    & "LocationPU: " & sLocationPU & vbLf _
+    & "LocationDO: " & sLocationDO & vbLf _
+    & "CarIntern: " & sCarIntern & vbLf _
+    & "BDateFirst: " & sBDateFirst & vbLf _
+    & "BDateLast: " & sBDateLast & vbLf _
+    & "PUDateFirst: " & sPUDateFirst & vbLf _
+    & "PUDateLast: " & sPUDateLast & vbLf _
+    & "AgeMin: " & sAgeMin & vbLf _
+    & "AgeMax: " & sAgeMax & vbLf _
+    & "DurMin: " & sDurMin & vbLf _
+    & "DurMax: " & sDurMax & vbLf _
+    & "IncludePII: " & sIncludePII & vbLf _
+    & "OneWayOnly: " & sOneWayOnly & vbLf _
+    & "Requestor: " & Environ("Username")
+    '& "IncludeCanx: " & sIncludeCanx & vbLf  'removed this, we can cover it better with Duration = 0
+'NOTE: doesn't work if you send via CDO, are the line breaks different?
+
+MsgBox "Report will be created, check your emails", vbInformation, ""
+ 
+End Sub
+
+Sub PII_Selected()
+'v1.49 2019-05-20 17:08 - fix for GDPR: adds password protection if PII is included
+If Range("admin_Include_PII") Then
+    MsgBox "WARNING: PII will be password protected to meet GDPR and Information Security policy requirements." & vbLf & vbLf & "Password is:  ResRequest" & Format(Now, "yyyymmdd"), vbExclamation, "Reservation Request"
+End If
+End Sub

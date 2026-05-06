@@ -1,0 +1,74 @@
+Attribute VB_Name = "modExportExceltoSQL"
+Option Explicit
+Sub ADOUpdateSQLTableFromExcel(ByVal SaveFileName As String)
+
+    Const DoDebug = False  'faster if False, if True can check code & timing in Immediate pane
+
+    Dim conn As New ADODB.Connection
+    Dim iRowNo As Integer
+    Dim sRC As String, sBrand As String, sCountry As String
+    Dim sDate As Long, sUsers As Long
+    Dim SQLTable As String
+    Dim ConnString As String
+
+    
+    'updates SQLTable using ADODB.Connection
+    SQLTable = "pandc_sandpit.mn.Fct_Google_Analytics_Extranet_Usage"
+    ConnString = "Provider=SQLOLEDB;Data Source=BI-01;Initial Catalog=PandC_Sandpit;Trusted_Connection=Yes"
+
+           
+           Dim ExcelApp As Excel.Application
+           Set ExcelApp = modAppsOffice.run_Excel("", "", , False, True)
+           
+           ExcelApp.Workbooks.Open (SaveFileName)
+           With ExcelApp.Workbooks(1).Sheets("Dataset1")
+                   
+               'Open a connection to SQL Server
+               conn.Open ConnString
+                   
+               'Skip the header row
+                iRowNo = 2
+                sDate = .Cells(iRowNo, 4)
+                
+                Dim SQLcommand As String
+                'deletes any existing records with sDate from SQLTable to avoid duplicates
+                SQLcommand = "delete from " & SQLTable & " where  sDate = '" & Format(Left(sDate, 4) & "-" & Mid(sDate, 2, 2) & "-" & Right(sDate, 2)) & "'"
+               
+                If DoDebug Then Debug.Print SQLcommand
+ 
+                SQLcommand = ""
+                   
+               'Loop until empty cell in RC
+               Do Until .Cells(iRowNo, 1) = ""
+                   sRC = .Cells(iRowNo, 1)
+                   sBrand = .Cells(iRowNo, 2)
+                   sCountry = .Cells(iRowNo, 3)
+                   sDate = .Cells(iRowNo, 4)
+                   sUsers = .Cells(iRowNo, 5)
+                       
+                SQLcommand = "insert into " & SQLTable & " (RC, Brand, Country, Date, Users) values ('" & sRC & "', '" & sBrand & "', '" & sCountry & "', '" & sDate & "', '" & sUsers & "')"
+              
+                   'Generate and execute sql statement to import the excel rows to SQL Server table
+                   conn.Execute SQLcommand
+        
+                   iRowNo = iRowNo + 1
+               Loop
+                    If DoDebug Then Debug.Print SQLcommand
+                    SQLcommand = ""
+                   
+               'MsgBox iRowNo & " Rows imported."
+                   
+               conn.Close
+               Set conn = Nothing
+                    
+           End With
+           
+           ExcelApp.Workbooks(1).Saved = True
+           ExcelApp.Quit
+           Set ExcelApp = Nothing
+    
+
+Exit Sub
+End Sub
+
+

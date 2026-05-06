@@ -1,0 +1,51 @@
+Attribute VB_Name = "olWorkflow"
+Option Explicit
+'module for Workflow related stuff in Outlook
+
+Sub Clean_Non_Pertinent_Folder()
+'write some code to check each SELECTED email
+'for each supplier domain in the To CC BCC and From fields
+'to auto-file in the relevant subfolder
+
+
+End Sub
+
+Sub File_Supplier_Email(Item As MailItem)
+
+'will sweep through a "Non-Pertinent" folder for auto-diverted and manually moved emails
+'will check the recipients & sender for match on Domain and file it in correct place
+'always goes into sOutput folder in \Suppliers\
+'may need to consider where multiple suppliers are in the email? check output folders
+'find a random category colour to flag them as "autofiled"
+
+Dim sDomain() As String, sOutput() As String, s As Integer
+'next supplier domain
+s = s + 1
+ReDim Preserve sDomain(1 To s) As String, sOutput(1 To s) As String
+sDomain(s) = "@AlMufta.com"
+sOutput(s) = "Al Mufta"
+'next supplier domain
+s = s + 1
+ReDim Preserve sDomain(1 To s) As String, sOutput(1 To s) As String
+sDomain(s) = "@hertz.com"
+sOutput(s) = "Hertz"
+'next supplier domain
+s = s + 1
+ReDim Preserve sDomain(1 To s) As String, sOutput(1 To s) As String
+sDomain(s) = "@hertzuk.com"
+sOutput(s) = "Hertz"
+'next supplier domain
+s = s + 1
+ReDim Preserve sDomain(1 To s) As String, sOutput(1 To s) As String
+sDomain(s) = "@europcar.com"
+sOutput(s) = "Europcar"
+
+'write some code to check THIS email
+'for each supplier domain in the To CC BCC and From fields
+'then auto-file in the relevant subfolder
+'you'll need to create the folder if it doesn't exist
+'use the \Supplier\ folder as first level folder above Inbox
+
+'we need a safety net to drop out if it finds MORE than 1 different sOutput
+
+End Sub

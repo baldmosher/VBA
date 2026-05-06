@@ -1,0 +1,155 @@
+Attribute VB_Name = "modValidationSummary"
+Option Explicit
+Option Compare Text
+
+Private Const sEmailTo As String = "P&CInsight@company.com"
+Private Const sEmailAdminTo As String = "pcinsightvm@company.com"
+
+Sub do_process(ByVal doAuto As Boolean)
+'dedicated process for Report Validation Summary
+
+Const ActualUNCpath As String = "\\company.local\rcfs\P&C\RT\"
+If ThisWorkbook.Path <> ActualUNCpath & "Automation" Then
+    If doAuto = False Then
+        If MsgBox("Warning: expect odd behaviour when opening from Y drive.  Recommend opening from full network path instead." & vbLf & vbLf & ActualUNCpath & "Automation\" & vbLf & vbLf & "Click Yes to close and change folder ready to reopen file.  Click No to open it anyway and deal with the consequences", vbExclamation Or vbYesNo, "") = vbNo Then Exit Sub
+    End If
+    ThisWorkbook.Close False
+End If
+
+'correct relative hyperlinks to UNC network path
+Dim ws As Worksheet, hl As Hyperlink, i As Integer
+For Each ws In ThisWorkbook.Sheets
+    For Each hl In ws.Hyperlinks
+        Debug.Print hl.Address
+        i = InStr(hl.Address, "Report Validation Summary.xlsb")
+        If i > 0 Then
+            hl.Address = ThisWorkbook.FullName
+            Debug.Print ">>> " & hl.Address
+        End If
+        i = InStr(hl.Address, "PC Insight Reports\")
+        If i > 0 Then
+            If Left(hl.Address, Len(ActualUNCpath)) <> ActualUNCpath Then
+                hl.Address = ActualUNCpath & Mid(hl.Address, i, 1000)
+                Debug.Print ">>> " & hl.Address
+            End If
+        End If
+        i = InStr(hl.Address, "PC%20Insight%20Reports/")
+        If i > 0 Then
+            If Left(hl.Address, Len(ActualUNCpath)) <> ActualUNCpath Then
+                hl.Address = ActualUNCpath & Replace(Replace(Mid(hl.Address, i, 1000), "%20", " "), "/", "\")
+                Debug.Print ">>> " & hl.Address
+            End If
+        End If
+        i = InStr(hl.Address, "PC Insight Reports/")
+        If i > 0 Then
+            If Left(hl.Address, Len(ActualUNCpath)) <> ActualUNCpath Then
+                hl.Address = ActualUNCpath & Mid(hl.Address, i, 1000)
+                Debug.Print ">>> " & hl.Address
+            End If
+        End If
+    Next hl
+Next ws
+
+'update linked workbooks
+'NB: REMOVING REPORTS FROM PUBLISHED FOLDERS WILL BREAK THIS PART
+On Error Resume Next
+ThisWorkbook.UpdateLink ThisWorkbook.LinkSources
+On Error GoTo 0
+
+'refresh validation pivots
+Dim mbxr As VbMsgBoxResult
+If doAuto Then mbxr = vbYes 'always yes
+If mbxr <> vbYes Then mbxr = MsgBox("Refresh raw totals pivots?  Takes less than a minute", vbQuestion Or vbYesNo, "")
+If mbxr = vbYes Then
+    Call xlBackgroundRefresh.Background_Refresh_And_Wait(True)
+    Application.Calculate
+'test selection of LW, WTD, LW in all pivots on Bookings/Sessions sheets
+    Call do_Pivot_Date_Filter_Reset
+    ThisWorkbook.Save
+    If doAuto Then
+    'that's it, just send email and exit
+        Call do_EmailConfirmation
+        GoTo CleanUp
+    End If
+    'confirm to user that it's finished
+    MsgBox "Done!", vbInformation, ""
+End If
+
+Exit Sub
+CleanUp:
+'should only get to here if opened on pcinsightvm
+ThisWorkbook.Saved = True   'it's already saved, this is just a failsafe
+Application.Quit
+End Sub
+
+Sub do_EmailConfirmation()
+'!!!!  JUST CHANGE THIS TO TRUE WHEN TESTING TO DISPLAY EMAILS  !!!!
+Const DisplayForTesting = False
+
+Dim t As Double
+Dim eBody As String, eSubj As String
+t = Now - Int(Now)
+'can combine these into one long email by combining eBody
+
+If Format(Now, "ddd") = "Mon" Then
+'send LW (+L4W +LD)
+    eSubj = "Validation Summary: raw numbers LW"
+    eBody = RangetoHTML(admin_Email.Range("EmailTableL7D")) _
+            & RangetoHTML(admin_Email.Range("EmailTableLW")) _
+            & RangetoHTML(shIssueLog.Range("IssueLogLW")) & "<P>"
+    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True)
+'    eSubj = "Validation Summary: Email Summary LW"
+'    eBody = RangetoHTML(admin_EmailTemplates.Range("EmailSummLW"))
+'    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True, , , True)
+    eSubj = "Validation Summary: Reports Lookups LW"
+    eBody = RangetoHTML(RptsWEEKLY.Range("EmailReportsLW").SpecialCells(xlCellTypeVisible)) _
+        & RangetoHTML(RptsDAILY.Range("EmailReportsLD").SpecialCells(xlCellTypeVisible))
+    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True)
+
+Else
+'send LD (+WTD)
+    eSubj = "Validation Summary: raw numbers LD"
+    eBody = RangetoHTML(admin_Email.Range("EmailTableL7D")) _
+        & RangetoHTML(admin_Email.Range("EmailTableLD")) _
+        & RangetoHTML(shIssueLog.Range("IssueLogLD")) & "<P>"
+    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True)
+'    eSubj = "Validation Summary: Email Summary LD"
+'    eBody = RangetoHTML(admin_EmailTemplates.Range("EmailSummLD"))
+'    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True, , , True)
+    eSubj = "Validation Summary: Reports Lookups LD"
+    eBody = RangetoHTML(RptsDAILY.Range("EmailReportsLD").SpecialCells(xlCellTypeVisible)) _
+        & RangetoHTML(RptsWTD.Range("EmailReportsWTD").SpecialCells(xlCellTypeVisible))
+    Call modEmail.SendEmail(sEmailTo, , , eSubj, eBody, DisplayForTesting, , , , , True)
+
+End If
+
+End Sub
+
+Sub do_Pivot_Date_Filter_Reset()
+'resets L4W, LW, WTD and LD to 1 in all pivots
+
+On Error Resume Next
+Dim ws(1 To 2) As Worksheet, w As Byte, pt As PivotTable, pf As PivotField
+Set ws(1) = shRawBook
+Set ws(2) = shRawSess
+For w = 1 To 2
+    For Each pt In ws(w).PivotTables
+        Set pf = pt.PageFields("L4W")
+        Set pf = pt.PageFields("WTD")
+        Set pf = pt.PageFields("LW")
+        Set pf = pt.PageFields("LD")
+        If pf.CurrentPage <> 1 Then pf.CurrentPage = 1
+        If pf.CurrentPage <> 1 Then
+            Call do_Send_Filter_Warning(ws(w).Name, pf.Name)  'only sends if the pf exists in pt
+        End If
+        Set pf = Nothing
+    Next pt
+Next w
+End Sub
+
+Sub do_Send_Filter_Warning(ByVal WorksheetName As String, ByVal PivFieldName As String)
+modEmail.SendEmail sEmailTo, _
+    , sEmailAdminTo _
+    , "Update Failed: Report Validation Summary not filtered correctly" _
+    , "Warning: looks like data for " & PivFieldName & " is missing from table - firstly, check " & WorksheetName & " have loaded overnight." & vbLf & vbLf & "Report Validation Summary will need to be rerun later."
+End Sub

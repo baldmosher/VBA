@@ -1,0 +1,35 @@
+Attribute VB_Name = "olArchive"
+Option Explicit
+Option Compare Text
+
+Sub efedoraExample()
+'https://www.experts-exchange.com/questions/22731876/moving-a-message-from-one-mailbox-to-another-with-VBA.html
+Dim i As Integer
+ Dim vFolder1 As Object 'Outlook.MAPIFolder
+ Dim vFolder2 As Object 'Outlook.MAPIFolder
+ Dim olApp As Object 'Outlook.Application
+ Set olApp = CreateObject("outlook.application")
+ Set vFolder1 = olApp.Session.Folders("ProductQuery@company.com").Folders("Inbox").Folders("Archive").Folders("2011")
+ Set vFolder2 = olApp.Session.Folders("Archive - ProductQuery@company.com").Folders("Inbox").Folders("Archive").Folders("2011")
+ Debug.Print Now & " (started)"
+ While vFolder1.Items.Count > 0
+    vFolder1.Items(1).Move vFolder2
+    i = i + 1
+    If i > 20000 Then GoTo QuitSub
+ Wend
+ Set vFolder1 = Nothing
+ Set vFolder2 = Nothing
+ Set olApp = Nothing
+QuitSub:
+Debug.Print Now & " (moved " & i & ")"
+ThisOutlookSession.Relaunch_Appointments
+End Sub
+
+Sub efedoraShortenedExample()
+ Dim olApp As Object
+ Set olApp = CreateObject("outlook.application")
+ olApp.Session.Folders("Mailbox - Your name").Folders("Receipts").Items(1).Move _
+  olApp.Session.Folders("Mailbox - Department").Folders("Receipts")
+ Set olApp = Nothing
+End Sub
+

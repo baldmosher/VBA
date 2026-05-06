@@ -1,0 +1,528 @@
+Attribute VB_Name = "modFile"
+Option Explicit
+Option Compare Text
+
+Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As Long)
+Private Const zSleepTime As Long = 1000  'v5.03, time in ms, i.e. 10000 = 10s
+
+'Version History:
+Public Const modFileCodeVer As String = _
+"modFile v6.00"
+'v6.00 2020-10-23 08:41 - merged forked modules modFile and modFile_FSO
+
+'modFile_FSO:
+'v5.03 2020-10-05 17:55 - Find_Newest_Filename: Debug options improved and commented out
+'v5.02 2019-10-08 11:11 - Find_Newest_Filename: improved on wildcard option
+'v5.01 2019-09-20 16:53 - FSO_Check_Read_Only: tests if file is read-only, returns 1 if true
+'v5.00 2019-06-07 11:57 - FSO_Check_File_Access: runs through a path and tests for ability to make files read-only
+'v4.02 2018-06-13 12:20 - Delete_Files_Older_Than_DateTime: added thumbs.db exclusion and bugfix for deleting read-only files
+'v4.01 2018-06-13 11:57 - Find_Newest_Filename: added thumbs.db exclusion
+'v4.00 2018-05-09 09:04 - added Count_Files_In_Folder
+'v3.03 2017-08-17 11:44 - added iMB size count
+'v3.02 2017-08-01 16:21 - Find_Newest_Filename: added wildcard option
+'v3.01 2017-07-12 13:20 - DeleteTempPowerPivotCache: added ShowConfirmationMessage option
+'v3.00 2017-07-12 13:10 - added Delete_Files_Older_Than_DateTime
+'v2.00 2017-06-23 13:02 - added Find_Newest_Filename
+'v1.05 2017-03-14 13:57 - added Option Compare Text
+'v1.04 2017-03-14 12:00 - added DeleteTempPowerPivotCache
+'v1.03 2017-02-03 11:11 - added modFile_FSO_Ver
+'v1.02 2017-02-01 10:18 - late binding
+'v1.01 2017-01-25 12:47 - added DeleteEmptyFolders
+'v1.00 2016-11-23 12:56 - added DeleteEmptyFolders
+
+'modFile:
+'v4.03 2017-07-24 17:44 - added Option Compare Text
+'v4.02 2017-03-01 10:16 - switched Application.Wait to Sleep
+'v4.01 2016-04-13 18:06 - added modFileCodeVer function to collect version number from module
+'v4.00 2015-11-24 09:01 - swapped Sleep for Application.Wait
+'v3.00 2015-03-02 11:08 - mf_Add_Foldername_to_Filenames created
+'v2.01 2014-09-17 00:35 - better error handler for no files found
+'v2.00 2014-09-08 11:56 - mfCountFilesInAFolder created
+'v1.07 2014-09-08 11:56 - mfLoopThroughFilesInAFolder: bugfix, added Sleep (pause) for file system delays where no files exist
+'v1.06 2014-09-03 17:18 - added mfGetDateModified
+'v1.05   mfLoopThroughFilesInAFolder: bugfix for NewerThan and variable name change
+'v1.04   mfLoopThroughFilesInAFolder: function reports back Variant
+'        mfLoopThroughFilesInAFolder: will count pattern matches
+'v1.03a  annotations only
+'v1.03   added mfLoopThroughFilesInAFolder
+'        added mfGetDateCreated
+'v1.02a  annotations only
+'v1.02   addded mfGetFileExtension
+'v1.01   added mf prefix to macronames
+'v1.00   created from Allen Browne original code
+
+'source: http://www.vboffice.net/sample.html?mnu=2&lang=en&smp=56&cmd=showitem&pub=6
+
+
+'===========================================================================
+' HELP CONTACT
+'===========================================================================
+' Code is provided without warranty and can be stolen and amended as required.
+' RC Help Contact:
+'   [redacted]
+'   recipient@company.com
+'=========================================================================
+
+'===========================================================================
+' modFile
+'===========================================================================
+'   Provides various VBA file & folder functions, some using FileSystemObjects
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   None
+
+'===========================================================================
+' Additional References required:
+'===========================================================================
+'   Microsoft Scripting Runtime
+'
+
+'===========================================================================
+' External applications required:
+'===========================================================================
+'   None
+
+Function modFileVer() As String
+modFileVer = modFileCodeVer
+End Function
+
+Function mfFileExists(ByVal strFile As String, Optional bFindFolders As Boolean) As Boolean
+'Purpose:   Return True if the file exists, even if it is hidden.
+'Arguments: strFile: File name to look for. Current directory searched if no path included.
+'           bFindFolders. If strFile is a folder, mfFileExists() returns False unless this argument is True.
+'Note:      Does not look inside subdirectories for the file.
+'Author:    Allen Browne. http://allenbrowne.com June, 2006.
+Dim lngAttributes As Long
+
+'Include read-only files, hidden files, system files.
+lngAttributes = (vbReadOnly Or vbHidden Or vbSystem)
+
+If bFindFolders Then
+    lngAttributes = (lngAttributes Or vbDirectory) 'Include folders as well.
+Else
+    'Strip any trailing slash, so Dir does not look inside the folder.
+    Do While Right$(strFile, 1) = "\"
+        strFile = Left$(strFile, Len(strFile) - 1)
+    Loop
+End If
+
+'If Dir() returns something, the file exists.
+On Error Resume Next
+mfFileExists = (Len(Dir(strFile, lngAttributes)) > 0)
+
+End Function
+
+Function mfFolderExists(strPath As String) As Boolean
+    On Error Resume Next
+    mfFolderExists = ((GetAttr(strPath) And vbDirectory) = vbDirectory)
+End Function
+
+Function mfTrailingSlash(varIn As Variant) As String
+    If Len(varIn) > 0 Then
+        If Right(varIn, 1) = "\" Then
+            mfTrailingSlash = varIn
+        Else
+            mfTrailingSlash = varIn & "\"
+        End If
+    End If
+End Function
+
+Function mfGetFileExtension(ByVal mfFileName As String) As String
+'v1.02 2013-04-12 14:58
+'reports characters after and including the LAST fullstop/period
+'e.g. "File Name v3.45.xlsm" result is ".xlsm"
+
+Const cPrd As String = "."
+Dim b As Byte, c As Byte, pp As String, tt As String
+b = InStr(1, mfFileName, cPrd) 'find first period in string
+If b = 0 Then
+'no periods found = no file extension
+    mfGetFileExtension = cPrd
+Else
+'make sure b is the last period in string
+    c = b
+    Do Until c = 0
+        c = InStr(b + 1, mfFileName, cPrd)
+        If c <> 0 Then b = c
+    Loop
+    mfGetFileExtension = cPrd & Right(mfFileName, Len(mfFileName) - b)
+End If
+End Function
+
+Function mfGetDateCreated(ByVal mfPathAndFileName As String) As Double
+'v1.07 2014-09-04 10:50 - bugfix for invalid PathAndFileName
+'v1.03 2013-07-18 16:05
+'source: http://www.mrexcel.com/forum/excel-questions/73458-read-external-file-properties-date-created-using-visual-basic-applications.html
+
+    Dim oFS As Object
+
+    'This creates an instance of the MS Scripting Runtime FileSystemObject class
+    Set oFS = CreateObject("Scripting.FileSystemObject")
+
+    'MsgBox mfPathAndFileName & " was created on " & oFS.GetFile(mfPathAndFileName).DateCreated
+On Error Resume Next
+    mfGetDateCreated = oFS.GetFile(mfPathAndFileName).DateCreated
+On Error GoTo 0
+
+    Set oFS = Nothing
+
+End Function
+
+Function mfGetDateModified(ByVal mfPathAndFileName As String) As Double
+'v1.07 2014-09-04 10:50 - bugfix for invalid PathAndFileName
+'v1.06 2014-09-03 17:18 - added
+'source: http://www.mrexcel.com/forum/excel-questions/73458-read-external-file-properties-date-created-using-visual-basic-applications.html
+
+    Dim oFS As Object
+
+    'This creates an instance of the MS Scripting Runtime FileSystemObject class
+    Set oFS = CreateObject("Scripting.FileSystemObject")
+
+    'MsgBox mfPathAndFileName & " was created on " & oFS.GetFile(mfPathAndFileName).DateModified
+On Error Resume Next
+    mfGetDateModified = oFS.GetFile(mfPathAndFileName).DateLastModified
+On Error GoTo 0
+    
+    Set oFS = Nothing
+
+End Function
+
+Function mfLoopThroughFilesInAFolder(ByVal mfPath As String _
+    , Optional ByVal mfSearchString As String = "" _
+    , Optional ByVal mfNewestFile As Boolean = False, Optional ByVal mfNewestFileNewerThan As Double _
+    , Optional ByVal mfCountMatches As Boolean)
+'v4.02 2017-03-01 10:16 - switched Application.Wait to Sleep
+'v2.01 2014-09-17 00:35 - better error handler for no files found
+'v1.07 2014-09-08 11:56 - added pause for file system delays where no files exist
+'v1.05 2013-09-20 13:33
+'original source: http://stackoverflow.com/questions/10380312/loop-through-files-in-a-folder-using-vba
+'searches in order of variables specified, only ever searches one variable
+'Usage:
+'   if mfSearchString is specified, searches for pattern match in filename
+'   if mfNewestFile is specified, searches for newest file created
+'   if mfCountMatches is True, counts pattern matches, mfSearchString is also required
+'       NB: mfNewestFileNewerThan [i.e. Now()] should also be specified as a validity check for search range
+
+Const cBsl As String = "\"
+If Right(mfPath, 1) <> cBsl Then mfPath = mfPath & cBsl
+
+Dim mfFile As Variant
+
+If mfSearchString = "" And mfNewestFile = False Then  'mfFilenameMinLen = 0 And
+    MsgBox "Must search for filename string OR minimum length of filename OR look for newest file"
+    Exit Function
+
+ElseIf mfSearchString <> "" Then
+'search for pattern match
+    If mfCountMatches Then
+    'count pattern matches
+        mfFile = Dir(mfPath)
+        While (mfFile <> "")
+            If InStr(mfFile, mfSearchString) > 0 Then
+                'MsgBox "found by pattern match: " & mfPath & mfFile
+                mfLoopThroughFilesInAFolder = mfLoopThroughFilesInAFolder + 1
+            End If
+            mfFile = Dir
+        Wend
+    Else
+    'find first file
+        mfFile = Dir(mfPath)
+        While (mfFile <> "")
+            If InStr(mfFile, mfSearchString) > 0 Then
+                'MsgBox "found by pattern match: " & mfPath & mfFile
+                mfLoopThroughFilesInAFolder = mfPath & mfFile
+                Exit Function
+            End If
+            mfFile = Dir
+        Wend
+    End If
+
+'ElseIf mfFilenameMinLen <> 0 Then  'can't see why this would ever be used
+'    mfFile = Dir(mfPath)
+'    While (mfFile <> "")
+'        If Len(mfFile) > 0 Then
+'            'MsgBox "found by min length of filename: " & mfPath & mfFile
+'            mfLoopThroughFilesInAFolder = mfPath & mfFile
+'            Exit Function
+'        End If
+'        mfFile = Dir
+'    Wend
+
+ElseIf mfNewestFile = True Then
+'search for newest file
+    Dim mfCDthisfile As Double, mfCDnewest As Double, s As Byte
+PauseForFileSystem:
+    mfFile = Dir(mfPath)
+    If mfFile = "" Then
+    'no files found in path, hang fire for file system delays
+        Sleep 1000  '1 second
+        s = s + 1
+        If s > 10 Then GoTo NoFilesFound    'catches errors if no files found in path after s seconds
+        GoTo PauseForFileSystem     'after pausing, try again
+    End If
+On Error GoTo ErrorHandler  'catches errors if path invalid or some other error in mfGetDateCreated
+    mfCDthisfile = mfGetDateCreated(mfPath & mfFile)
+    If mfNewestFileNewerThan = 0 Then mfCDnewest = mfCDthisfile Else mfCDnewest = mfNewestFileNewerThan 'helps to limit searching for newer files than this one
+On Error GoTo 0
+    While (mfFile <> "")
+        mfCDthisfile = mfGetDateCreated(mfPath & mfFile)
+        If mfCDthisfile > mfCDnewest Then
+            mfCDnewest = mfCDthisfile
+            mfLoopThroughFilesInAFolder = mfPath & mfFile  'always newest file, .PART file is created FIRST
+        End If
+        mfFile = Dir
+    Wend
+'NB: returns "" if no newest file found
+End If
+
+NoFilesFound:
+Exit Function
+ErrorHandler:
+MsgBox "Error in mfLoopThroughFilesInAFolder: no files found in path" & vbLf & vbLf & mfPath
+End Function
+
+Function mfCountFilesInAFolder(ByVal mfPath As String) As Integer
+'v2.00 2014-09-08 11:56 - mfCountFilesInAFolder created
+
+Const cBsl As String = "\"
+If Right(mfPath, 1) <> cBsl Then mfPath = mfPath & cBsl
+
+Dim mfFile As Variant
+mfFile = Dir(mfPath)
+While mfFile <> ""
+    mfCountFilesInAFolder = mfCountFilesInAFolder + 1
+    mfFile = Dir
+Wend
+
+End Function
+
+Sub mf_Add_Foldername_to_Filenames(ByVal FolderPath As String)
+'v3.00 2015-03-02 11:08 - created
+'adds folder name to start of all filenames in that folder, and in all subfolders
+'e.g. C:\Music\Beatles\White Album\01 Trackname.mp3 >>>> C:\Music\Beatles\White Album\White Album 01 Trackname.mp3
+'     C:\Users\Johnny\001.jpg >>>> C:\Users\Johnny\Johnny - 001.jpg
+'useful for flattening folder structure, e.g. loads of MP3s
+If Right(FolderPath, 1) <> "\" Then FolderPath = FolderPath & "\"
+Dim fdrs() As String, fdr As String, fns() As String, fn As String, f As Integer, fx As String, c As Integer
+fdr = Dir(FolderPath, vbDirectory)
+fdr = Dir
+fdr = Dir
+While fdr <> ""
+    f = f + 1
+    ReDim Preserve fdrs(1 To f) As String
+    fdrs(f) = fdr
+    fdr = Dir
+    If fdr = "" Then GoTo DoFiles
+Wend
+DoFiles:
+For f = 1 To f
+    c = 1
+    ReDim fns(1 To c) As String
+    fn = Dir(FolderPath & fdrs(f) & "\")
+    While fn <> ""
+        fns(c) = fn
+        c = c + 1
+        ReDim Preserve fns(1 To c) As String
+        fn = Dir
+    Wend
+    For c = 1 To c - 1
+        fn = FolderPath & fdrs(f) & "\" & fdrs(f) & " - " & Right(fns(c), 15)
+        If InStr(fns(c), fdrs(f) & " - ") = 0 Then
+            Name FolderPath & fdrs(f) & "\" & fns(c) As fn
+        End If
+    Next c
+Next f
+
+End Sub
+
+Sub DeleteEmptyFolders(ByVal strFolderPath As String)
+'v1.02 2017-02-01 10:18 - late binding
+'v1.00 2016-11-23 12:56 - added DeleteEmptyFolders
+'source: http://www.freevbcode.com/ShowCode.asp?ID=7821
+'recurses through folders beneath path and deletes any empty folders
+   
+   Dim m_fsoObject As Object
+   Dim fsoSubFolders As Object
+   Dim fsoFolder As Object
+   Dim fsoSubFolder As Object
+   
+   Dim strPaths()
+   Dim lngFolder As Long
+   Dim lngSubFolder As Long
+      
+   DoEvents
+   
+   Set m_fsoObject = CreateObject("Scripting.FileSystemObject")
+   If Not m_fsoObject.FolderExists(strFolderPath) Then Exit Sub
+   
+   Set fsoFolder = m_fsoObject.GetFolder(strFolderPath)
+   
+   On Error Resume Next
+   
+   'Has sub-folders
+   If fsoFolder.SubFolders.Count > 0 Then
+        lngFolder = 1
+        ReDim strPaths(1 To fsoFolder.SubFolders.Count)
+        'Get each sub-folders path and add to an array
+        For Each fsoSubFolder In fsoFolder.SubFolders
+            strPaths(lngFolder) = fsoSubFolder.Path
+            lngFolder = lngFolder + 1
+        Next fsoSubFolder
+        
+        lngSubFolder = 1
+        'Recursively call the function for each sub-folder
+        Do While lngSubFolder < lngFolder
+           Call DeleteEmptyFolders(strPaths(lngSubFolder))
+           lngSubFolder = lngSubFolder + 1
+        Loop
+    End If
+   
+    'No sub-folders or files
+    If fsoFolder.Files.Count = 0 And fsoFolder.SubFolders.Count = 0 Then
+        fsoFolder.Delete
+    End If
+
+End Sub
+
+Sub DeleteTempPowerPivotCache(Optional ByVal ShowConfirmationMessage As Boolean = True)
+'v3.03 2017-08-17 11:44 - added iMB size count
+'v3.01 2017-07-12 13:20 - added ShowConfirmationMessage option
+'v1.04 2017-03-14 12:00 - added DeleteTempPowerPivotCache
+Dim MyObj As Object, MySource As Object, MyFolder As Variant, sPath As String, i As Integer, iMB As Long
+On Error Resume Next
+sPath = Environ("temp") & "\"
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+   Set MySource = MyObj.GetFolder(sPath)
+   For Each MyFolder In MySource.SubFolders
+      If Left(MyFolder.Name, 9) = "Vertipaq_" Then
+         iMB = iMB + (MyFolder.Size / 1024 / 1024)
+         i = i + 1
+         MyObj.DeleteFolder MyFolder
+      End If
+   Next MyFolder
+If i > 0 And ShowConfirmationMessage Then
+    MsgBox "Deleted " & i & " PP cache folders totalling " & Format(iMB, "#,###") & "MB from " & sPath, vbInformation, ""
+ElseIf ShowConfirmationMessage Then
+    MsgBox "No PP cache folders found in " & sPath, vbInformation, ""
+End If
+End Sub
+
+Function Find_Newest_Filename(ByVal sPath As String, Optional sFilenameWildcard As String) As String
+'v5.03 2020-10-05 17:55 - Find_Newest_Filename: Debug options improved and commented out
+'v5.02 2019-10-08 11:11 - Find_Newest_Filename: improved on wildcard option
+'v4.01 2018-06-13 11:57 - Find_Newest_Filename: added thumbs.db exclusion
+'v3.02 2017-08-01 16:21 - Find_Newest_Filename: added wildcard option
+'v2.00 2017-06-23 13:02 - added Find_Newest_Filename
+Dim MyObj As Object, MySource As Object, MyFile As Variant, t As Double, b As Boolean
+Dim sMyFilename As String, sWCprefix As String, sWCsuffix As String
+sWCprefix = Left(sFilenameWildcard, InStr(sFilenameWildcard, "*") - 1)
+sWCsuffix = Mid(sFilenameWildcard, InStr(sFilenameWildcard, "*") + 1, Len(sFilenameWildcard) - InStr(sFilenameWildcard, "*") + 1)
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+    Set MySource = MyObj.GetFolder(sPath)
+    For Each MyFile In MySource.Files
+        sMyFilename = Replace(MyFile, MySource & "\", "")
+        'Debug.Print "sMyFilename = " & sMyFilename
+        b = False
+        If sFilenameWildcard = "" Then
+            b = True
+        ElseIf sWCprefix = "" And sWCsuffix = "" Then
+            b = True
+        ElseIf sWCprefix <> "" And sWCsuffix = "" And sWCprefix = Left(sMyFilename, Len(sWCprefix)) Then
+            b = True
+        ElseIf sWCprefix = "" And sWCsuffix <> "" And sWCsuffix = Right(sMyFilename, Len(sWCsuffix)) Then
+            b = True
+        ElseIf sWCprefix <> "" And sWCsuffix <> "" And sWCprefix = Left(sMyFilename, Len(sWCprefix)) And sWCsuffix = Right(sMyFilename, Len(sWCsuffix)) Then
+            b = True
+        End If
+        If b = True Then
+            If MyFile.DateLastModified > t Then
+                t = MyFile.DateLastModified
+                Find_Newest_Filename = MyFile.Name
+            End If
+        End If
+    Next MyFile
+'Debug.Print "Find_Newest_Filename = " & Find_Newest_Filename
+End Function
+
+Sub Delete_Files_Older_Than_DateTime(ByVal sPathToCheck As String _
+    , ByVal dMaxDateTime As Double, Optional ShowConfirmationMessage As Boolean = False)
+'v4.02 2018-06-13 12:20 - Delete_Files_Older_Than_DateTime: added thumbs.db exclusion and bugfix for deleting read-only files
+'v3.00 2017-07-12 13:10 - added Delete_Files_Older_Than_DateTime
+Dim MyObj As Object, MyFolder As Object, MyFile As Object, i As Integer
+On Error Resume Next
+If sPathToCheck = "" Then
+    MsgBox "No path specified"
+    Exit Sub
+End If
+If Right(sPathToCheck, 1) <> "\" Then sPathToCheck = sPathToCheck & "\"
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+   Set MyFolder = MyObj.GetFolder(sPathToCheck)
+   For Each MyFile In MyFolder.Files
+      If MyFile.DateLastModified < dMaxDateTime And MyFile <> "thumbs.db" Then
+         Call SetAttr(MyFile, vbNormal)
+         MyFile.Delete
+         i = i + 1
+      End If
+   Next MyFile
+If i > 0 And ShowConfirmationMessage Then
+    MsgBox "Deleted " & i & " files older than " & Format(dMaxDateTime, "yyyy-mm-dd") & " from " & sPathToCheck, vbInformation, ""
+ElseIf ShowConfirmationMessage Then
+    MsgBox "No files older than " & Format(dMaxDateTime, "yyyy-mm-dd") & " found in " & sPathToCheck, vbInformation, ""
+End If
+End Sub
+
+Function Count_Files_In_Folder(ByVal sPathToCheck As String) As Long
+'v4.00 2018-05-09 09:04 - added Count_Files_In_Folder
+Dim MyObj As Object, MySource As Object, MyFile As Variant
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+    If Right(sPathToCheck, 1) <> "\" Then sPathToCheck = sPathToCheck & "\"
+    Set MySource = MyObj.GetFolder(sPathToCheck)
+    For Each MyFile In MySource.Files
+        Count_Files_In_Folder = Count_Files_In_Folder + 1
+    Next MyFile
+End Function
+
+Sub FSO_Check_File_Access(ByVal sPath As String)
+'v5.00 2019-06-07 11:57 - FSO_Check_File_Access: tests for ability to make files read-only
+'runs through and tests file access by applying read-only flag, then removing it
+'only tests files without read-only flag enabled
+On Error Resume Next
+'Const sPath As String = "\\company.local\Group Data\Automation\Masters\"
+Dim MyObj As Object, MySource As Object, MyFile As Variant, t As Double
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+Set MySource = MyObj.GetFolder(sPath)
+For Each MyFile In MySource.Files
+    If MyFile.Attributes <> 32 And MyFile.Attributes <> 33 Then
+    'only tests files without read-only flag enabled
+        SetAttr MyFile, vbReadOnly
+        If MyFile.Attributes <> 32 And MyFile.Attributes <> 33 Then Debug.Print MyFile
+        SetAttr MyFile, vbNormal
+    End If
+Next MyFile
+End Sub
+
+Function FSO_Check_Read_Only(ByVal sPathFile As String) As Boolean
+'v5.01 2019-09-20 16:53 - FSO_Check_Read_Only: tests if file is read-only, returns 1 if true
+'NOTE: untested, might not work as expected
+On Error Resume Next
+'Const sPathFile As String = "\\company.local\Group Data\Automation\Masters\"
+Dim MyObj As Object, MyFile As Variant
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+Set MyFile = MyObj.GetFile(sPathFile)
+If MyFile.Attributes = 32 Or MyFile.Attributes = 33 Then FSO_Check_Read_Only = True
+End Function
+
+Sub LoopThroughFiles_Example()
+'http://stackoverflow.com/questions/10380312/loop-through-files-in-a-folder-using-vba
+Dim MyObj As Object, MySource As Object, MyFile As Variant
+Set MyObj = CreateObject("Scripting.FileSystemObject")
+   Set MySource = MyObj.GetFolder("c:\testfolder\")
+   For Each MyFile In MySource.Files
+      If InStr(MyFile.Name, "test") > 0 Then
+         MsgBox "found"
+         Exit Sub
+      End If
+   Next MyFile
+End Sub

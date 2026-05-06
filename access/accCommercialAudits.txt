@@ -1,0 +1,315 @@
+Attribute VB_Name = "accCommercialAudits"
+'===========================================================================
+' accCommercialAudits
+'===========================================================================
+'   Code for loading data via Commercial Audits database in Access
+'
+
+'=========================================================================
+' VERSION HISTORY
+'=========================================================================
+'v7.09 2020-11-09 15:36 - JIRA_Replace_Import_File_List: record & logging of success/fail for each CSV
+'v7.08 2020-11-05 16:41 - moved IUP to end of process to prevent overwriting new data with old data when processing multiple files
+'v7.07 2020-10-20 17:39 - ado_ExecStoredProcedure: moved into accUtils
+'v7.06 2020-10-19 16:19 - ado_ExecStoredProcedure: added Debug.Print to show when it's failing
+'v7.05 2020-10-19 12:52 - runs IUP at end of process whether or not there's anything to do
+'v7.04 2020-10-15 15:09 - updated path to M:\Compliance Macro Admin\Commercial
+'v7.03 2020-10-15 13:13 - ado_ExecStoredProcedure: added email on failure, doesn't pop up msgbox
+'v7.02 2020-10-15 12:26 - added sSprocName as Private Const to execute BI-01 procedure
+'v7.01 2020-10-09 19:38 - bugfix in filenames
+'v7.00 2020-10-08 15:33 - transferred to pcopsvm, removed unused XLS code
+'v6.04 2020-10-07 09:38 - jira_VendorID: handles "multiple" Vendor fields and chooses the best one
+'v6.03 2020-10-06 21:01 - updated sRecipients
+'v6.02 2020-10-06 20:38 - jira_Destination: handles "multiple" countries
+'v6.01 2020-10-05 17:35 - updated COPS Ticket Export filename
+'v6.00 2020-08-04 16:53 - executes sproc on BI-01
+'v5.06 2020-04-14 20:31 - added jira_Destination to combine "Destination Country (DN)" from list with "Destination Country" free text
+'v5.05 2020-04-13 21:37 - deletes older files from import (>14 days)
+'v5.04 2020-02-28 14:56 - bugfix: removed IMEX 8 export
+'v5.03 2019-10-08 11:27 - fn_Load_JIRA_Data bugfix: loads newest file first, so now will not overwrite new data with old data in STAGING when loading multiple files
+'v5.02 2019-09-30 10:12 - commented XLS version, doesn't work
+'v5.01 2019-08-28 14:04 - added IMEX 11
+'v5.00 2019-08-23 19:29 - uses STAGING table and more processing shifted to BI-01
+'v4.02 2019-08-22 17:42 - amended to close Excel Application
+'v4.01 2019-08-20 09:06 - amended to check for XLS valid for import first
+'v4.00 2019-08-20 08:50 - rewrote import to use Excel as intermediary to transform CSV data (more reliable)
+'v3.00 2019-08-14 10:11 - rewrote import steps to handle different format JIRA reports
+'v2.04 2019-05-09 11:35 - added comment to highlight that you need to run BI-01 sproc
+'v2.03 2019-04-18 13:22 - renamed queries
+'v2.02 2019-04-01 09:22 - moved SLA and DueDate calcs to SQL Server, added sPathMDrive
+'v2.01 2019-03-27 15:58 - copies data to SQL Server once updated
+'v2.00 2019-03-08 11:43 - version numbering started
+'v1.00                  - old version running EventLogger updates (etc.)
+
+'===========================================================================
+' Additional modules required:
+'===========================================================================
+'   None
+'
+
+'===========================================================================
+' References required:
+'===========================================================================
+'   Microsoft ActiveX Data Objects 2.0 Library
+'   Microsoft Office Access Database Engine Objects Library
+'
+
+Option Explicit
+Option Compare Database
+
+Private Const sPathMDrive As String = "\\company.local\Group Data\"
+Private Const sRecipients As String = "recipient@company.com; recipient@company.com; recipient@company.com"
+'Private Const sCSVpath As String = "P&C\Commercial Operations Team\JIRA COPS\csv_JIRA_Import.csv"
+Private Const sCSVinput As String = "Compliance Macro Inputs\JIRA COPS\"
+Private Const sCSVadmin As String = "Compliance Macro Admin\Commercial\"  'change this to admin when you can
+Private Const sCSVoutput As String = "Compliance Macro Outputs\JIRA COPS\"  'this is OK
+Private Const sSprocName As String = "PandC_Sandpit.COps.IUP_Fct_JIRA_Issues"
+
+Private connDB As New ADODB.Connection
+Private rs As New ADODB.Recordset
+Private strSQL As String
+Private strConnectionstring As String
+Private strServer As String
+Private strDBase As String
+Private strUser As String
+Private strPwd As String
+
+Function fn_Load_JIRA_Data()
+'v7.09 2020-11-09 15:36 - record of success/fail for each CSV
+'v7.08 2020-11-05 16:41 - moved IUP to end of process to prevent overwriting new data with old data when processing multiple files
+'v7.05 2020-10-19 12:52 - runs IUP at end of process whether or not there's anything to do
+'                       - note: this allows a future change to load the historical data into STAGING, latest update first
+'v7.02 2020-10-15 12:26 - added sSprocName as Private Const to execute BI-01 procedure
+'v6.01 2020-10-05 17:35 - updated COPS Ticket Export filename
+'v6.00 2020-08-04 16:53 - executes sproc on BI-01
+'v5.05 2020-04-13 21:37 - deletes older files from import (>14 days)
+'v5.04 2020-02-28 14:56 - bugfix: removed IMEX 8 export
+'v5.03 2019-10-08 11:27 - bugfix: loads newest file first, so now will not overwrite new data with old data in STAGING when loading multiple files
+'v5.00 2019-08-23 19:29 - uses STAGING table and more processing shifted to BI-01
+'v3.00 2019-08-14 10:11 - rewrote import steps to handle different format JIRA reports
+'v2.05 2019-05-20 16:03 - rearranged comments to make clear when to pause & change spec
+'v2.04 2019-05-09 11:35 - added comment to highlight that you need to run BI-01 sproc
+'v2.03 2019-04-18 13:22 - renamed queries
+'v2.02 2019-04-01 09:22 - moved SLA and DueDate calcs to SQL Server, added sPathMDrive
+'v2.01 2019-03-27 15:58 - copies data to SQL Server once updated
+'v2.00 2019-03-08 11:43 - version numbering started
+'runs various queries to load JIRA ticket data into this database
+
+'1. Export JIRA "COPS Ticket Export" search results for tickets updated since last load (weekly?)
+
+'2. "reload JIRA" macro runs this function
+
+'replace contents of Jira import table to current CSV import list
+    Call JIRA_Replace_Import_File_List
+    
+'NOTE: if reloading archives, look for PAUSE HERE WHEN RELOADING ARCHIVE - check which csv template is needed
+Dim s As String
+Const cNameOfCSV As String = "csv_JIRA_Import.csv"
+'get the NEWEST CSV in the input folder -- subsequent files are loaded afterwards to prevent overwriting old data
+'--> this is the normal file name
+'--> if you're reloading archives, but forgot to save the COPS Ticket Export query in Jira before exporting, this won't work
+    s = modFile_FSO.Find_Newest_Filename(sPathMDrive & sCSVinput, "COPS Ticket Export*.csv")
+'--> note that reloading archives DOESN'T WORK with the standard IMEX spec unless you save the filter before export
+    'If s = "" Then s = Dir(sPathMDrive & sCSVinput & "JIRA *.csv")  'this is the filename when you're reloading archives
+While s <> ""   'while a file exists to be imported
+    Debug.Print "Import file found: " & s
+'copy import CSV to admin import CSV file
+    If Dir(sPathMDrive & sCSVadmin & cNameOfCSV) <> "" Then Kill sPathMDrive & sCSVadmin & cNameOfCSV
+    FileCopy sPathMDrive & sCSVinput & s, sPathMDrive & sCSVadmin & cNameOfCSV  '"bad file name or number" here means there's no file
+'disable warnings
+'!!
+'!! PAUSE HERE WHEN CHANGING SPEC
+'!! update the IMEX specs system table and check that CSV template is correctly aligned
+'!! update Jira STAGING table and main table to ensure new fields are INSERTED correctly in the next step
+'!! pause again before running the APPEND to update the query
+'!!
+    DoCmd.SetWarnings False
+
+'import COPS data from CSV file into BI-01
+'!!
+'!! PAUSE HERE WHEN CHANGING SPEC
+'!! re-link STAGING and main tables and then update APPEND query to ensure data is inserted correctly in this step
+'!! NOTE: pause again before running the IUP at the end of this process
+'!!
+'!! we could do with having [Modification_Date] set to the time of the CSV file, not the load, but not a huge problem
+    Dim db As Database
+    Set db = CurrentDb
+    db.Execute "JIRA Q3 Append SQL IMEX 11" ' & fn_JIRA_Validate_TXT_Template   'determine which CSV file format this is and import using the correct Append query
+    Debug.Print db.RecordsAffected & " records"
+    'DoCmd.OpenQuery "JIRA Q3 Append SQL IMEX 11" ' & fn_JIRA_Validate_TXT_Template   'determine which CSV file format this is and import using the correct Append query
+
+'enable warnings
+    DoCmd.SetWarnings True
+'move imported CSV file to Imported folder
+    If Dir(Replace(sPathMDrive & sCSVoutput & s, "JIRA COPS\", "JIRA COPS\Imported\")) = "" Then
+        Name sPathMDrive & sCSVinput & s As Replace(sPathMDrive & sCSVoutput & s, "JIRA COPS\", "JIRA COPS\Imported\")   'move imported CSV to output subfolder
+    Else
+        Kill sPathMDrive & sCSVinput & s  'imported CSV already in subfolder, so we can just delete it
+    End If
+
+'next file to import?
+    s = modFile_FSO.Find_Newest_Filename(sPathMDrive & sCSVinput, "COPS Ticket Export*.csv")
+'if none found, just have a quick check for the old filename in case we're reloading any of those...
+    If s = "" Then s = modFile_FSO.Find_Newest_Filename(sPathMDrive & sCSVinput, "Ticket Export*.csv")
+    's = Dir(sPathMDrive & sCSVinput & "COPS Ticket Export*.csv") 'this is the normal file name, unless you're reloading archives
+'--> note that reloading archives DOESN'T WORK with the standard IMEX spec unless you save the filter before export
+    'If s = "" Then s = Dir(sPathMDrive & sCSVinput & "JIRA *.csv")  'this is the filename when you're reloading archives
+Wend
+
+'now run sproc in BI-01, this runs every day on a DB job, but doesn't allow for delayed/failed loading of the data:
+'!!
+'!! PAUSE HERE WHEN TESTING OR CHANGING SPROC - TEST ON BI-01
+'!! update Jira main table and IUP to ensure new fields are loaded correctly in the next step
+'!! pause here before running the IUP
+'!!
+    Call ado_ExecStoredProcedure(sSprocName)
+
+Debug.Print "End of Import"
+
+'validate imported tickets with errors
+    Dim i As Integer
+    i = fn_JIRA_Validate_Imported
+    If i > 0 Then
+        modEmail.SendEmail sRecipients, "", "pcopsvm@company.com", "JIRA Import Error Summary", "WARNING: " & fn_JIRA_Validate_Imported & " errors in data.  Check the list of ticket refs, amend them in JIRA, and rerun the import as usual." & vbLf & vbLf & "M:\P&C\Commercial Operations Team\JIRA COPS\Error Reports\JIRA Error_ incorrect TXT template (already imported).xlsb", , , , , , , False          'True sends via CDO
+    End If
+    
+'3. then later on, refresh the Excel OKR Dashboard report with Report Refresh (Simple Updater)
+
+'4. run all export analysis reports
+On Error Resume Next
+    DoCmd.RunSavedImportExport "Export-JIRA Error_ incorrect TXT template (already imported)"
+    DoCmd.RunSavedImportExport "Export-JIRA Error_ incorrect TXT template IMEX 11"
+On Error GoTo 0
+
+'5. delete older imported files from archive folder
+Const iDays As Integer = 14
+    modFile_FSO.Delete_Files_Older_Than_DateTime Replace(sPathMDrive & sCSVoutput & s, "JIRA COPS\", "JIRA COPS\Imported\"), Now - iDays
+
+'On Error GoTo 0
+End Function
+
+Sub JIRA_Replace_Import_File_List()
+'v7.09 2020-11-09 15:36 - record & logging of success/fail for each CSV
+    
+    DoCmd.SetWarnings False
+    DoCmd.RunSQL "DELETE * FROM [JIRA_COPS_Files]"
+    accUtils.acU_ImportDirListing sPathMDrive & "Compliance Macro Inputs\JIRA COPS\", "JIRA_COPS_Files", "JIRA_COPS_Files", "csv"
+    DoCmd.SetWarnings True
+
+End Sub
+
+Function fn_JIRA_CDate(ByVal sDateString As String) As Date
+'v2.00 2019-03-08 11:43 - version numbering started
+'Converts JIRA date into Access date when loading in from TXT files
+'Note: XLS import can just use standard CDate function
+On Error Resume Next
+Dim sCleaned As String
+Const DoDebug As Boolean = False
+If sDateString = "" Then Exit Function
+sCleaned = "20" & Mid(sDateString, 8, 2) & "-" & Mid(sDateString, 4, 3) & "-" & Mid(sDateString, 1, 2) & " " & Mid(sDateString, 11, 10)
+fn_JIRA_CDate = CDate(sCleaned)
+If fn_JIRA_CDate = 0 Then Exit Function
+If DoDebug Then Debug.Print sDateString & " >> " & sCleaned & " >> " & fn_JIRA_CDate
+End Function
+
+Function fn_JIRA_weekday(ByVal dDate As Date) As String
+'v2.00 2019-03-08 11:43 - version numbering started
+'finds the relevant Monday of the week
+On Error Resume Next
+Const DoDebug As Boolean = False
+Dim s As String, d As Double, wd As Byte
+If dDate = 0 Then Exit Function
+    If DoDebug Then Debug.Print dDate
+d = dDate
+    If DoDebug Then Debug.Print "d:  " & d
+wd = Weekday(d, vbMonday)
+    If DoDebug Then Debug.Print "wd: " & wd
+d = d - wd + 1
+    If DoDebug Then Debug.Print "d: " & d
+s = Format(d, "yyyy-mm-dd")
+    If DoDebug Then Debug.Print "s: " & s
+fn_JIRA_weekday = s
+End Function
+
+Public Function fn_JIRA_Validate_TXT_Template() As String
+'v5.02 2019-09-30 10:12 - commented XLS version, doesn't work
+'v5.01 2019-08-28 14:04 - added IMEX 11
+'v4.01 2019-08-20 09:06 - amended to check for XLS valid for import first
+'v4.00 2019-08-20 08:50 - rewrote import to use Excel as intermediary to transform CSV data (more reliable)
+'determines which import spec to use depending on the columns in the TXT file
+'sends a result email to key COps team members
+'source: https://access-programmers.co.uk/forums/showthread.php?t=82585
+    Dim lRows As Long, lErrors8 As Long, lErrors11 As Long ', lErrors9 As Long
+'TXT import total row count
+    lRows = DCount("*", "JIRA Import: TXT template total rows")
+'test for TXT import errors with Parent id column present:
+    lErrors8 = DCount("*", "JIRA Error: incorrect TXT template IMEX 11")
+    If lErrors8 = 0 Then    'this template is OK to use, apparently with no errors
+        fn_JIRA_Validate_TXT_Template = "IMEX 11"
+        modEmail.SendEmail sRecipients, "cops@company.com", "pcopsvm@company.com", "JIRA Import OK", "Used spec " & fn_JIRA_Validate_TXT_Template & " with no errors reported (note: IMEX 11 is the normal spec)", , , , , , , False          'True sends via CDO
+        Exit Function
+    End If
+''test for TXT import errors without Parent id column present:
+'    lErrors9 = DCount("*", "JIRA Error: incorrect TXT template IMEX 9")
+'    If lErrors9 = 0 Then    'this template is OK to use, apparently with no errors
+'        fn_JIRA_Validate_TXT_Template = "IMEX 9"
+'        modEmail.SendEmail sRecipients, "cops@company.com", "pcopsvm@company.com", "JIRA Import OK", "Used spec " & fn_JIRA_Validate_TXT_Template & " with no errors reported (note: IMEX 11 is the normal spec)", , , , , , , False          'True sends via CDO
+'        Exit Function
+'    End If
+'test for TXT import errors without Parent id column present:
+    lErrors11 = DCount("*", "JIRA Error: incorrect TXT template IMEX 8")
+    If lErrors11 = 0 Then    'this template is OK to use, apparently with no errors
+        fn_JIRA_Validate_TXT_Template = "IMEX 11"
+        modEmail.SendEmail sRecipients, "cops@company.com", "pcopsvm@company.com", "JIRA Import OK", "Used spec " & fn_JIRA_Validate_TXT_Template & " with no errors reported (note: IMEX 8 is the normal spec)", , , , , , , False          'True sends via CDO
+        Exit Function
+    End If
+'some errors found, but one of the templates should be OK to use, and we send an email warning to check and fix it
+    If lErrors8 < lErrors11 Then
+        fn_JIRA_Validate_TXT_Template = "IMEX 8"
+'    ElseIf lErrors9 < lErrors11 Then
+'        fn_JIRA_Validate_TXT_Template = "IMEX 9"
+    Else
+        fn_JIRA_Validate_TXT_Template = "IMEX 11"
+    End If
+    modEmail.SendEmail sRecipients, "cops@company.com", "pcopsvm@company.com", "JIRA Import Error", "WARNING: " & lErrors8 + lErrors11 & " of " & lRows & " records have not loaded correctly using spec " & fn_JIRA_Validate_TXT_Template & " (note: IMEX 8 is the normal spec).  Often this is because the JIRA import into MS Access is incorrect.  Check the import specs, and rerun the import as needed.", , , , , , , False          'True sends via CDO
+End Function
+
+Public Function fn_JIRA_Validate_Imported() As Integer
+'counts errors in database (query below covers all possible errors)
+'source: https://access-programmers.co.uk/forums/showthread.php?t=82585
+fn_JIRA_Validate_Imported = DCount("*", "JIRA Error: incorrect TXT template (already imported)")
+End Function
+
+Function jira_Destination(Optional ByRef sDestinationList As String = "", Optional sDestinationText As String = "")
+'v6.02 2020-10-06 20:38 - jira_Destination: handles "multiple" countries
+'v5.06 2020-04-14 20:31 - added jira_Destination to combine "Destination Country (DN)" from list with "Destination Country" free text
+Dim s As String
+If sDestinationList = "" Then
+    s = sDestinationText
+ElseIf sDestinationList = "multiple countries -- specified below" Then
+    s = "multiple: " & sDestinationText
+Else
+    s = sDestinationList
+    If Left(Right(s, 5), 2) = " (" And Right(s, 1) = ")" Then s = Left(s, Len(s) - 5)
+End If
+jira_Destination = s
+End Function
+
+Function jira_VendorID(Optional ByRef sVendorID1 As String = "", Optional sVendorID2 As String = "")
+'v6.04 2020-10-07 09:38 - jira_VendorID: handles "multiple" Vendor fields and chooses the best one
+Dim s As String
+If sVendorID1 = "" And sVendorID2 = "" Then
+    s = ""
+ElseIf sVendorID1 = "" Then
+    s = sVendorID2
+Else
+    s = sVendorID1
+End If
+jira_VendorID = s
+End Function
+
+
+Function test_folder()
+
+End Function
+
