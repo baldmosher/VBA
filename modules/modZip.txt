@@ -8,7 +8,7 @@ Attribute VB_Name = "modZip"
 ' DGF Help Contact: see BPMHelpContact module
 ' Code is provided without warranty and can be stolen and amended as required.
 '   [redacted]
-'   ThomasJamesParish@outlook.com
+'   industries@baldmosher.com
 '   http://baldywrittencod.blogspot.com
 '=========================================================================
 
@@ -848,7 +848,7 @@ Sub syntax_to_zip_one_file()
     Zip7Sub spth & "TXT backups\*.txt", spth & "TXT backups\VBA Modules as TXT.zip", True, True
     Sleep zSleepTime
 'email TXT zip to author
-    modEmail.SendEmail "ThomasJamesParish@outlook.com;bpm.gb@dhl.com", , , "VBA modules as TXT", "Attached modules in TXT format, save as .BAS and import into VBA", , spth & "TXT backups\VBA Modules as TXT.zip"
+    modEmail.SendEmail "industries@baldmosher.com;bpm.gb@dhl.com", , , "VBA modules as TXT", "Attached modules in TXT format, save as .BAS and import into VBA", , spth & "TXT backups\VBA Modules as TXT.zip"
     
 'On Error Resume Next
 '    zsrc = Dir(spth, vbDirectory)
@@ -898,6 +898,6 @@ On Error GoTo 0
 
 ''NB: this doesn't work, Symantec AV strips out the attachment on sending
 ''optionally, email update to author
-'    modEmail.SendEmail "ThomasJamesParish@outlook.com; bpm.gb@dhl.com", , , "Updated VBA Modules", , , ztgt
+'    modEmail.SendEmail "industries@baldmosher.com; bpm.gb@dhl.com", , , "Updated VBA Modules", , , ztgt
 
 End Sub
