@@ -1,5 +1,15 @@
 Attribute VB_Name = "olWorkflow"
 Option Explicit
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olWorkflow: Supplier email auto-filer (incomplete prototype)
+'
+' Intended to auto-file inbound supplier emails into per-supplier subfolders
+' based on sender domain matching. The domain/folder mapping skeleton is
+' in place but the filing logic is not production-ready. Retained as a
+' starting point for future development.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'module for Workflow related stuff in Outlook
 
 Sub Clean_Non_Pertinent_Folder()

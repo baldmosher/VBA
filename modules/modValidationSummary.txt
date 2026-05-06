@@ -2,6 +2,16 @@ Attribute VB_Name = "modValidationSummary"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modValidationSummary: Report Validation Summary workbook driver
+'
+' Validates that the workbook is opened from the correct UNC network path
+' (not via a mapped drive letter), corrects relative hyperlinks to full
+' UNC paths, and runs a batch validation process across multiple reports.
+' Requires: network access to the report share
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Const sEmailTo As String = "P&CInsight@company.com"
 Private Const sEmailAdminTo As String = "pcinsightvm@company.com"
 

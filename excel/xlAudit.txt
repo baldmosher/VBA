@@ -2,6 +2,16 @@ Attribute VB_Name = "xlAudit"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlAudit: Audit trail log manager for Excel reports
+'
+' Records who ran the report, when, and from where into a TXT log file on
+' the network share. Handles drive-letter to UNC path mapping so log paths
+' are consistent regardless of which machine runs the report.
+' Requires: modFile v6+
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Version History:
 Public Const xlAuditCodeVer As String = _
 "xlAudit v2.06a" 'v2.06a 2020-10-23 08:45 - merged forked modFile and modFile_FSO modules

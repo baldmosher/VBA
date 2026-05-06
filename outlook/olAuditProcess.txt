@@ -1,5 +1,16 @@
 Option Explicit
 Option Compare Text
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olAuditProcess: COps audit email data extractor
+'
+' Processes COps audit emails using pattern matching on email body text to
+' extract structured data (issue tracking, location tracking). Writes
+' records to SQL Server. Migrated from pcinsightvm to a dedicated
+' COpsAuditLogs mailbox at v5.05.
+' Requires: ADODB, modEmail
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'v6.01 2020-04-08 18:25 - fn_GetReport_AnyPrefix_SpecificSuffix: bugfix: looks for pattern match, not for entire end of line (e.g. finds " out of " instead of " out of 5 copied."
 'v6.00 2020-04-08 17:46 - fn_GetReport_AnyPrefix_SpecificSuffix: new function to look for pattern match
 '                       - Audit_SQL_COps_Copy_Location_Tracking: release version, adapted from Audit_SQL_COps_Issue_Tracking v5.06

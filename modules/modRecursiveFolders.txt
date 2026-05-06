@@ -1,6 +1,17 @@
 Attribute VB_Name = "modRecursiveFolders"
 Option Explicit
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modRecursiveFolders: Recursive folder processor
+'
+' Walks a folder tree and calls ADOUpdateSQLTableFromExcel for each Excel
+' file found. Designed for batch-importing Google Analytics extract files
+' from an Unprocessed staging folder. Adapt the root path constant and the
+' per-file processing call for other use cases.
+' Requires: modExportExceltoSQL, Excel object library
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub RecursiveFolders_Control()
 
 '//not fully tested -- need to get this to work properly with files containing more than 1 day (sDate)

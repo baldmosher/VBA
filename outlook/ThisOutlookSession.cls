@@ -1,3 +1,14 @@
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' ThisOutlookSession: Application-level Outlook automation entry point
+'
+' Wires Application_Reminder and Application_NewMailEx events to the report
+' trigger and archive routines. This is the top-level entry point for all
+' automated Outlook activity — nothing runs without this class being active.
+' Three variants exist for different virtual machines (see filename suffix).
+' Requires: olTriggers, olReminders, modEmail
+'===========================================================================
+'--- CC-SUMMARY-END ---
 VERSION 1.0 CLASS
 BEGIN
   MultiUse = -1  'True

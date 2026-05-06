@@ -1,4 +1,13 @@
 Attribute VB_Name = "accCommercialCompliance"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accCommercialCompliance: Compliance data loader for Access database
+'
+' Single-routine module that loads commercial compliance data from a network
+' share path into the Access database. Added 2020; minimal scope by design.
+' Requires: accUtils
+'===========================================================================
+'--- CC-SUMMARY-END ---
 '===========================================================================
 ' accCommercialCompliance
 '===========================================================================

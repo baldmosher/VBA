@@ -2,6 +2,16 @@ Attribute VB_Name = "xlRCX"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlRCX: Bespoke RCX exposure tracker row extender
+'
+' On each workbook save (for authorised users), checks both Tracker and
+' Exposure Tracker sheets and inserts a new blank row for today if today's
+' date is not yet present. Optionally transfers numbers from an open RCX
+' report automatically after extending the table.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub RCX_extend_tracking()
 'loops through both Exposure sheets, adds a new row with blanks for today
 'this runs when SAVING the workbook if the user is listed on the hidden ADMIN sheet

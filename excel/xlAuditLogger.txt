@@ -1,4 +1,15 @@
 Attribute VB_Name = "xlAuditLogger"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlAuditLogger: SQL compliance table writer
+'
+' Reads exception/authorisation records from a structured Excel sheet and
+' inserts or updates rows in a SQL Server compliance staging table via ADODB.
+' Used for margin exception audit trails. Configure the schema/table
+' constants at the top of the module for each deployment.
+' Requires: ADODB, modEmail
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'xlAuditLogger
 
 'Summary:

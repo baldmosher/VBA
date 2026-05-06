@@ -1,4 +1,15 @@
 Attribute VB_Name = "xlSprocRefresh"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlSprocRefresh: SQL stored procedure trigger from Excel
+'
+' Executes a named SQL Server stored procedure from Excel via ADODB, with a
+' configurable timeout. Sends a failure email if the procedure errors or
+' exceeds the time limit. Use to pre-refresh a SQL dataset before running
+' a report that depends on it.
+' Requires: ADODB, modEmail
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'xlSprocRefresh
 
 Option Explicit

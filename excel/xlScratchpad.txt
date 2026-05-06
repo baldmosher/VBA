@@ -2,6 +2,17 @@ Attribute VB_Name = "xlScratchpad"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlScratchpad: PDF-ready scratchpad copy generator
+'
+' Creates a clean copy of the current report sheet suitable for PDF export
+' or distribution. Strips hidden rows and columns, applies print area and
+' page setup, and optionally exports to PDF. Supersedes xlPDFprint (merged
+' at v6, 2018).
+' Requires: xlUtils
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Version History:
 Public Const xlScratchpadCodeVer As String = _
 "xlScratchpad v6.00"

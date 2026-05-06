@@ -1,5 +1,15 @@
 Attribute VB_Name = "modExportExceltoSQL"
 Option Explicit
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modExportExceltoSQL: Google Analytics Excel-to-SQL importer
+'
+' Reads a Google Analytics usage report from an open Excel workbook and
+' inserts rows into a SQL Server table via ADODB. Tightly coupled to the
+' GA extranet usage dataset schema — adapt column mappings for other data.
+' Requires: ADODB, Excel object library
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub ADOUpdateSQLTableFromExcel(ByVal SaveFileName As String)
 
     Const DoDebug = False  'faster if False, if True can check code & timing in Immediate pane

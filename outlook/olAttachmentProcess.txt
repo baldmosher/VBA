@@ -1,4 +1,15 @@
 Attribute VB_Name = "olAttachmentProcess"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olAttachmentProcess: Outlook attachment processor (Google Analytics)
+'
+' Saves inbound email attachments (Google Analytics reports) from the
+' pcinsightvm inbox to a network share, then calls the SQL import routine.
+' Triggered by an Outlook rule or the Application_NewMailEx event in
+' ThisOutlookSession. Supersedes olSaveAttachtoDisk.
+' Requires: modExportExceltoSQL, Excel object library
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'NB: this process is due to be removed eventually, superseded by direct report from OLAP_Detail
 
 Option Explicit

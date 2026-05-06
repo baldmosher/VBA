@@ -2,6 +2,17 @@ Attribute VB_Name = "modFile"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modFile: File system utility library (v6 at archive)
+'
+' Key features: find newest file matching a wildcard pattern, check and set
+' read-only status, delete files older than a given datetime, count files
+' in a folder, Sleep with a file-size-proportional delay. Merged from
+' separate modFile and modFile_FSO modules at v6.
+' Requires: kernel32 Sleep (declare inline or via modSleep)
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliSeconds As Long)
 Private Const zSleepTime As Long = 1000  'v5.03, time in ms, i.e. 10000 = 10s
 

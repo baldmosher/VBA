@@ -2,6 +2,17 @@ Attribute VB_Name = "xlArchive"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlArchive: Report output archiver
+'
+' Copies the current report output to a dated subfolder on the network share.
+' Import one copy per report workbook and configure the path/recipient
+' constants at the top of the module. Sends a failure email if the archive
+' step errors.
+' Requires: modEmail
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Use this to add an Archive routine to your report.
 '1. Import the latest modArchive from M:\Automation\VBA\ and check for changes
 '2. Copy an existing Sub and edit to suit your report

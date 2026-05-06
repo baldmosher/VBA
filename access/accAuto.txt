@@ -1,6 +1,16 @@
 Attribute VB_Name = "accAuto"
 Option Compare Database
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accAuto: AutoExec automation controller (pcinsightvm)
+'
+' Entry point for scheduled overnight report automation on the pcinsightvm
+' Access database. Runs a configured task sequence between 18:00-18:59;
+' prompts for manual confirmation at any other time.
+' Requires: modEmail v11.12+, WScript reference
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Const sAutoUser As String = "pcinsightvm"
 Public Const sEmailToAdmin As String = "recipient@company.com; pcinsightvm@company.com"
 Public Const sRecipients As String = "p&cinsight@company.com"

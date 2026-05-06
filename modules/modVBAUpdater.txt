@@ -2,6 +2,17 @@ Attribute VB_Name = "modVBAUpdater"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modVBAUpdater: Single-module VBA replacer
+'
+' Programmatically replaces one named VBA module within an open workbook,
+' loading the replacement code from a .bas file on disk. Lower-level
+' counterpart to xlVBAUpdater (which operates on a folder of workbooks).
+' Requires: VBIDE object model (enable "Trust access to VBA project
+'           object model" in Excel Trust Center)
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Const modVBAUpdaterCodeVer As String = _
 "modVBAUpdater v3.00"
 'v3.00 2017-01-25 11:31 - added code from http://stackoverflow.com/questions/19800184/vbcomponents-remove-doesnt-always-remove-module

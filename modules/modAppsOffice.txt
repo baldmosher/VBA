@@ -2,6 +2,16 @@ Attribute VB_Name = "modAppsOffice"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modAppsOffice: Cross-application Office launcher and controller
+'
+' Opens and controls external Excel or Access application instances from
+' within VBA. Handles visibility, event enabling/disabling, and path
+' normalisation. Use when one Office application needs to drive another
+' (e.g. Access launching Excel to run a report).
+'===========================================================================
+'--- CC-SUMMARY-END ---
 '=========================================================================
 ' VERSION HISTORY
 '=========================================================================

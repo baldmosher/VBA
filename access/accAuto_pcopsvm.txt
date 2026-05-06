@@ -1,6 +1,15 @@
 Attribute VB_Name = "accAuto_pcopsvm"
 Option Compare Database
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accAuto_pcopsvm: AutoExec automation controller (pcopsvm variant)
+'
+' Functionally identical to accAuto but configured for the pcopsvm virtual
+' machine (separate email constants, forked from accAuto at v3.01).
+' Requires: modEmail v11.12+, WScript reference
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Const sAutoUser As String = "pcopsvm"
 Private Const sEmailTo As String = "pcopsvm@company.com; recipient@company.com"
 

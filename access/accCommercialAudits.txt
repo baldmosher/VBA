@@ -1,4 +1,14 @@
 Attribute VB_Name = "accCommercialAudits"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accCommercialAudits: JIRA/CSV data loader for Commercial Audits database
+'
+' Validates and imports JIRA issue CSV exports into Access, then executes
+' stored procedures on SQL Server BI-01 to push data to the sandpit schema.
+' Logs success/failure per file; handles multiple import specs (IMEX 8 & 11).
+' Requires: accUtils v6+, modEmail, ADODB
+'===========================================================================
+'--- CC-SUMMARY-END ---
 '===========================================================================
 ' accCommercialAudits
 '===========================================================================

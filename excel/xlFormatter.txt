@@ -1,4 +1,14 @@
 Attribute VB_Name = "xlFormatter"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlFormatter: Named number format applicator
+'
+' Applies a standard number format to the current selection by reading the
+' format string from a single-cell Named Range (e.g. fmt_Pct, fmt_Num).
+' Keeps formatting consistent across reports without hardcoding format strings
+' in code — the named cell is the single source of truth.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'xlFormatter
 'v1.00 2016-07-05 10:59
 

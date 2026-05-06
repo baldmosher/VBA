@@ -2,6 +2,17 @@ Attribute VB_Name = "olAuditCops"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olAuditCops: COps email audit logger
+'
+' Logs inbound emails from COps functional mailboxes (PriceMatch,
+' ProductQuery, StopSale) to a SQL Server audit database via ADODB.
+' Extracts metadata from each item, archives processed messages, and
+' sends a completion summary email.
+' Requires: Microsoft Excel, ADODB, olArchiver, olReminders
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Requires library references & modules:
 '   Microsoft Excel
 '   Microsoft ActiveX Data Objects v2.0 or later

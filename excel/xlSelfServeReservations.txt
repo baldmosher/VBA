@@ -2,6 +2,17 @@ Attribute VB_Name = "xlSelfServeReservations"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlSelfServeReservations: Email-triggered self-serve reservations report
+'
+' Handles email-triggered reservation data requests. Filters by country,
+' supplier, and pickup/dropoff location. Applies GDPR password protection
+' automatically if PII fields are included in the output. Emails results
+' back to the requester.
+' Requires: modEmail, xlUtils, olTriggers (trigger source)
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Const sEmailTo As String = "recipient@company.com; recipient@company.com"
 Private Const sEmailCC As String = "pcinsightvm@company.com"
 

@@ -2,6 +2,17 @@ Attribute VB_Name = "modExtra"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modExtra: Custom automation hook stubs
+'
+' Provides empty do_extras() and do_extras_first() subs called by modAuto
+' at defined points in the automation sequence (after open, and after run).
+' Import into each automated report workbook and add report-specific
+' pre/post-run code here rather than modifying modAuto directly.
+' Requires: modAuto v3.19+
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub do_extras()
 'add your custom code here to be run during auto_publish routine
 'this module requires modAuto v3.19 or later

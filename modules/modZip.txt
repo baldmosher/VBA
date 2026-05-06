@@ -1,4 +1,16 @@
 Attribute VB_Name = "modZip"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modZip: ZIP file creation and extraction utility (v9 at archive)
+'
+' Creates and extracts ZIP archives using the Windows Shell CopyHere method,
+' with optional support for a third-party zip library. Primary use case:
+' packaging VBA module .bas exports as a ZIP for distribution or archival.
+' Also contains a stub for emailing the ZIP to the author (now just reference).
+' Requires: Windows Shell (scripting.filesystemobject); optional third-party
+'           zip library for extended features
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'modZip
 'v9.04 2015-07-14 18:36
 

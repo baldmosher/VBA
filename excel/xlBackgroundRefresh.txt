@@ -2,6 +2,17 @@ Attribute VB_Name = "xlBackgroundRefresh"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlBackgroundRefresh: Background data connection refresh manager
+'
+' Fires all workbook data connections as background queries, monitors their
+' completion status via a connections config block on a hidden sheet, then
+' triggers pivot refresh and full recalculation once all are done.
+' Core component of the automated overnight report pipeline.
+' Requires: kernel32 Sleep (or modSleep), xlPivots, xlUtils
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'xlBackgroundRefresh
 
 'Summary:

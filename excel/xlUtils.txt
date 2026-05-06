@@ -2,6 +2,17 @@ Attribute VB_Name = "xlUtils"
 Option Explicit
 Option Compare Text
 Option Base 1   'v27.00
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlUtils: Core Excel utility library (v37 at archive)
+'
+' The most widely-used module in this codebase. Key features: run-on-timer
+' scheduler (RunWhen), chart-to-image export, MySQL ODBC driver detection,
+' data connection path management, UNC/drive-letter path helpers, sheet and
+' range utilities, user reminder system.
+' Required by: most Excel and shared automation modules
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public RunWhen As Double
 'Version History:
 Public Const xlUtilsCodeVer As String = _

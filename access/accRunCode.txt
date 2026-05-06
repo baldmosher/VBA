@@ -1,5 +1,15 @@
 Attribute VB_Name = "accRunCode"
 Option Compare Database
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accRunCode: Ad-hoc SQL Server maintenance runner
+'
+' Named functions for manually truncating specific staging tables on BI-01
+' via ADODB stored procedure calls. Run these from the Access Immediate
+' window or attach to a button â€” not part of the automated pipeline.
+' Requires: accUtils v6+, ADODB
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'requires accUtils v6
 
 Function Truncate_BI01_PandC_Sandpit_COps_Fct_JIRA_Issues_STAGING()
@@ -15,7 +25,7 @@ Function Truncate_MySQL_Company_Supplier_Country()
 Dim cnn As ADODB.Connection, cmd As ADODB.Command
  
 Set cnn = New ADODB.Connection
-'"Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+'"Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoftï¿½ Windowsï¿½ Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
 Set cmd = New ADODB.Command
  
 cmd.ActiveConnection = cnn
@@ -35,7 +45,7 @@ Function Truncate_MySQL_titan1_Location_City_Time_Zone_Country()
 Dim cnn As ADODB.Connection, cmd As ADODB.Command, rst As ADODB.Recordset
 Set cnn = New ADODB.Connection
 With cnn
-    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoftï¿½ Windowsï¿½ Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
     .Open
     If .State = adStateClosed Then
         MsgBox "Can't open connection.", vbInformation, "Error:"
@@ -58,7 +68,7 @@ Function Truncate_MySQL_titan1_Company_Supplier_Country()
 Dim cnn As ADODB.Connection, cmd As ADODB.Command, rst As ADODB.Recordset
 Set cnn = New ADODB.Connection
 With cnn
-    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoft® Windows® Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
+    .ConnectionString = "Description=BI-01;DRIVER=SQL Server;SERVER=BI-01;UID=pcinsightvm;Trusted_Connection=Yes;APP=Microsoftï¿½ Windowsï¿½ Operating System;WSID=988XP32;DATABASE=PandC_Sandpit"
     .Open
     If .State = adStateClosed Then
         MsgBox "Can't open connection.", vbInformation, "Error:"

@@ -2,6 +2,18 @@ Attribute VB_Name = "xlVBAUpdater"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlVBAUpdater: Network-based VBA module updater
+'
+' Scans a folder of target workbooks and replaces specified VBA modules from
+' master copies on the network share. Handles path migrations between share
+' locations and checks for required admin sheets. Allows module updates to
+' be pushed to many workbooks without opening each one manually.
+' Requires: xlUtils, VBIDE object model (enable "Trust access to VBA project
+'           object model" in Excel Trust Center)
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Version History:
 Public Const xlVBAUpdaterCodeVer As String = _
 "xlVBAUpdater v7.07"

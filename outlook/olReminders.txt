@@ -2,6 +2,16 @@ Attribute VB_Name = "olReminders"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olReminders: Outlook reminder-based automation scheduler
+'
+' Manages persistent calendar appointments that fire the Application_Reminder
+' event in ThisOutlookSession on a schedule. These appointments act as cron
+' jobs — they MUST NOT be deleted or dismissed. Also provides a relaunch
+' routine to recreate them if accidentally removed.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Const sAppointmentCategory As String = "Logged"                                                      'category for all scheduled Reminders
 Public Const sAppointmentArchiveSubject As String = "DO NOT DELETE OR DISMISS - Archive reminder"           'subject controls behaviour in code (Application_Reminder event)
 'Public Const sAppointmentInboxesSubject As String = "DO NOT DELETE OR DISMISS - Inbox Count reminder"   'subject controls behaviour in code (Application_Reminder event)

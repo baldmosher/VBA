@@ -2,6 +2,19 @@ Attribute VB_Name = "modEmail"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modEmail: Comprehensive email utility library (v13 at archive)
+'
+' The most capable and widely-used module in this codebase. Sends rich HTML
+' emails via the Outlook object model with CDO as a fallback. Key features:
+' embedded HTML tables (%HTMLTABLE1-6% substitution), attachment handling,
+' UNC path to clickable hyperlink conversion, reply-to management, and
+' VM-aware admin email routing.
+' Required by: nearly all automation modules
+' Requires: Outlook object model; CDO library for fallback sending
+'===========================================================================
+'--- CC-SUMMARY-END ---
 '*****************************************************
 '*****  WARNING: SETTINGS BELOW MUST BE AMENDED  *****
 '*****************************************************

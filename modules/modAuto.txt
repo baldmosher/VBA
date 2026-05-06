@@ -2,6 +2,19 @@ Attribute VB_Name = "modAuto"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modAuto: Overnight report automation orchestrator
+'
+' Coordinates the full automated report run sequence: open workbook, refresh
+' data connections (xlBackgroundRefresh), update pivots (xlPivots), write
+' audit log (xlAudit), archive output (xlArchive), email results (modEmail),
+' and close. Import into each automated report workbook and configure the
+' constants at the top.
+' Requires: modEmail v13.12+, modFile v6+, xlAudit v2.06+,
+'           xlBackgroundRefresh v8+, xlPivots v7.18+, xlUtils v37.02+
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'You will need:
 ' - MACROS & admin sheets from Generic Sheets for Automation
 ' - ThisWorkbook module code (find it commented at bottom of this module)

@@ -1,5 +1,14 @@
 Attribute VB_Name = "xlPDFprint"
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlPDFprint: DEPRECATED — use xlScratchpad instead
+'
+' Original PDF print and scratchpad utility. All functionality has been
+' merged into xlScratchpad v6 (2018). This module is retained in the archive
+' for historical reference only. Do not use in new workbooks.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 ' ****************************************************************
 ' ****************************************************************
 ' ****************************************************************

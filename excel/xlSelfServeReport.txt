@@ -2,6 +2,17 @@ Attribute VB_Name = "xlSelfServeReport"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlSelfServeReport: Email-triggered self-serve report (One Way Fees)
+'
+' Handles email-triggered requests for the One Way Fees report. Manages
+' pivot data connection selection, runs the report for the requested
+' country/supplier, and publishes output to the network share. Part of
+' the olTriggers email-trigger pipeline.
+' Requires: modEmail, xlUtils, xlPivots, olTriggers (trigger source)
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Const cReportName As String = "One Way Fees"
 
 Sub restore_pivot_to_default_connection()

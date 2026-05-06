@@ -2,6 +2,15 @@ Attribute VB_Name = "olArchiver"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olArchiver: Outlook MAPI folder email mover
+'
+' Moves email items between folders across shared Outlook mailboxes using
+' the MAPI object model. Used as a building block by olAuditCops and
+' olAuditProcess for archiving processed items after logging.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub efedoraExample()
 'https://www.experts-exchange.com/questions/22731876/moving-a-message-from-one-mailbox-to-another-with-VBA.html
  Dim i As Integer

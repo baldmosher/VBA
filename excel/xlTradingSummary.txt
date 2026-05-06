@@ -2,6 +2,15 @@ Attribute VB_Name = "xlTradingSummary"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlTradingSummary: Trading Summary report filter controls
+'
+' Show/hide controls for Pay Now/Pay Local, NA Domestic, and PNPL row
+' groups on a Trading Summary report. Driven by Named Ranges on the report
+' sheet — see inline comments for required range names and setup steps.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Standard code routines to work with Trading Summary report filters & buttons
 
 'Requires these range names to be created on report sheet for these functions to work:

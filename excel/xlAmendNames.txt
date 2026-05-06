@@ -1,6 +1,15 @@
 Attribute VB_Name = "xlAmendNames"
 Option Explicit
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlAmendNames: Bulk rename Named Ranges and/or sheet tabs
+'
+' Adds a prefix/suffix to, or replaces text in, all Named Range names and
+' optionally sheet tab names in the active workbook. Useful when cloning a
+' report template and needing to differentiate pivot cache names.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub test()
 'comment to leave one of these as appropriate for test
 Call amend_names("pivBookRouteWeb", "pivBookRoute", True, True)

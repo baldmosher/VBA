@@ -1,4 +1,15 @@
 Attribute VB_Name = "modSleep"
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' modSleep: kernel32 Sleep declaration and file-size delay helper
+'
+' Provides the Windows kernel32 Sleep API declaration and a helper function
+' (zSleepTime) that returns a delay in milliseconds proportional to a file's
+' size — useful when waiting for a file write to complete before reading it.
+' Paste into modAuto or any module needing Sleep; make the declaration
+' Private to avoid conflicts with other modules.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'paste this into a module (e.g. modAuto) and make Sleep Private not Public
 'Syntax:
 '   Sleep zSleepTime(pthfn)     (time linked to file size)

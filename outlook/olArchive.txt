@@ -2,6 +2,15 @@ Attribute VB_Name = "olArchive"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olArchive: Early mailbox folder archiver prototype
+'
+' Moves items between MAPI folder paths across shared Outlook mailboxes.
+' Based on an Experts Exchange example; an early prototype superseded by
+' olArchiver. Retained for reference.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub efedoraExample()
 'https://www.experts-exchange.com/questions/22731876/moving-a-message-from-one-mailbox-to-another-with-VBA.html
 Dim i As Integer

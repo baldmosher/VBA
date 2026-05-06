@@ -2,6 +2,16 @@ Attribute VB_Name = "xlPCIFormat"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlPCIFormat: Standard P&C Insight report formatter
+'
+' Applies consistent header, border, and column width formatting to a report
+' sheet. Driven by a control column (K) where cells tagged "TY" identify
+' which columns to format. Adapt the control column and format constants
+' for each report.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub PCI_Format_Header_Spacer_Sum_Spacer_Detail()
 'resets all formatting on report borders and column widths
 'needs coding to select range relative to ActiveCell

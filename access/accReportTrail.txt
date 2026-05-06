@@ -1,6 +1,16 @@
 Attribute VB_Name = "accReportTrail"
 Option Explicit
 Option Compare Database
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' accReportTrail: Report Trail audit log manager
+'
+' Watches a TXT log folder, appends new log files to an Access backend
+' database, normalises UNC vs drive-letter paths for consistency, and
+' creates a timestamped backup of the backend on each run.
+' Requires: Access DAO, network access to log share
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Const sPandCRT As String = "Y:\RT\"
 'Private Const sPathFile As String = "\\company.local\BackOffice\P&C\RT\Automation\Logging\TXT\import.txt"
 Private Const sLogPath As String = "\\company.local\BackOffice\P&C\RT\Automation\Logging\TXT\"

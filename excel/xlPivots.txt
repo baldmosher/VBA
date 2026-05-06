@@ -2,6 +2,16 @@ Attribute VB_Name = "xlPivots"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlPivots: PivotTable and PowerPivot utility library
+'
+' Key features: refresh all pivot tables, detect when PowerPivot calculations
+' have fully completed (essential for the automated pipeline), identify
+' whether the workbook is running on an automation VM account.
+' Requires: xlUtils
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Private Const cPCInsightSupportEmail As String = "recipient@company.com; recipient@company.com"
 Private Const sAutomationUser As String = "pcinsightvm|pcopsvm"
 

@@ -1,6 +1,16 @@
 Attribute VB_Name = "xlSwapColumnRefforTableField"
 Option Explicit
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlSwapColumnRefforTableField: Column-to-table-field formula migrator
+'
+' Find-and-replace utility for formula migration. Swaps traditional sheet
+' column references ($A:$A style) for structured table field references
+' (TableName[FieldName] style) across all formula cells in the workbook.
+' Use when migrating a data source from a flat range to a named Table.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Sub swap_in_formulas_SUMIF_columns_for_table_columns()
 'v1.03 2015-10-30 - bugfix to v1.02
 'v1.02 2015-10-23 - on all sheets

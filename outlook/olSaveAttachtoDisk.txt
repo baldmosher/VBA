@@ -1,6 +1,16 @@
 Attribute VB_Name = "olSaveAttachtoDisk"
 Option Compare Text
 Option Explicit
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olSaveAttachtoDisk: Email attachment saver (early version)
+'
+' Saves email attachments to a fixed network path and calls the SQL import
+' routine. Single-destination, no subject filtering. Earlier and simpler
+' predecessor to olAttachmentProcess; retained for reference.
+' Requires: modExportExceltoSQL
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Sub saveAttachtoDisk(itm As Outlook.MailItem)
 Dim objAtt As Outlook.Attachment
 Dim saveFolder As String

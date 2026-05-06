@@ -2,6 +2,16 @@ Attribute VB_Name = "xlSimple"
 Option Explicit
 Option Compare Text
 
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlSimple: Lightweight automation controller
+'
+' A stripped-down report automation controller for workbooks that do not
+' need the full overnight VM pipeline. Handles basic connection refresh,
+' pivot update, and save without the scheduling and audit overhead of modAuto.
+' Requires: modEmail, xlUtils
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public t0 As Double, t1 As Double
 Public sReportList As String
 

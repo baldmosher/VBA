@@ -1,6 +1,16 @@
 Attribute VB_Name = "xlFormulaConvert"
 Option Explicit
 Option Compare Text
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' xlFormulaConvert: IFERROR-to-IF formula converter
+'
+' Replaces =IFERROR(formula,"") patterns with =IF(col="","",formula) across
+' the current selection. Required when PowerPivot needs to distinguish between
+' a genuinely blank calculation cell and one silently suppressing an error.
+' Typically takes ~30 seconds across ~10 columns in a large report.
+'===========================================================================
+'--- CC-SUMMARY-END ---
 Public Const xlFormulaConvert As String = _
 "xlFormulaConvert v1.01"
 'v1.01 2016-12-02 16:53 - bugfix

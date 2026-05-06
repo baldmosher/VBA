@@ -1,6 +1,17 @@
 Attribute VB_Name = "olTriggers"
 Option Explicit
 Option Compare Text
+'--- CC-SUMMARY-START ---
+'===========================================================================
+' olTriggers: Email-triggered report automation engine (pcinsightvm, v5.31)
+'
+' The central dispatch module for email-triggered self-serve reports.
+' Listens for formatted inbound request emails and routes to the appropriate
+' handler (Season End Dates, OWFs, DMX, Tactical Calculator, Reservations).
+' Opens the relevant Excel workbook, runs the report, and replies with output.
+' Requires: modEmail, modFile, modAppsOffice, Excel report workbooks
+'===========================================================================
+'--- CC-SUMMARY-END ---
 'Private Const sPathYDrive As String = "\\company.local\Group Data\P&C\"
 Private Const sPathMDrive As String = "\\company.local\Group Data\"
 'v5.31 2019-10-24 10:58 - Trigger_Reservations: added sLocationDO separately from sLocationPU
