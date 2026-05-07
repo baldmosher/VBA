@@ -4,7 +4,7 @@ A reference archive of Excel, Outlook, and Access VBA automation code written ci
 
 ---
 
-**baldmosher™ disclaimer:** all code was lifted, stolen, and adapted from the internet. Stack Overflow, forums, etc. Eventually I realised I knew more than the internet, so there's some hefty development in here, but I claim no copyright, nor do I recognise any of this as my IP, and I leave this legacy behind for anyone to utilise, fully open source / free use licence, do whatever you want with it, coding is fun, figure stuff out! But it's 2026... I'm pretty sure VBA is effectively dead now, and coding is almost automated, but I am fond of it, and I still use it sometimes. My top tip: don't use Copilot for creating VBA. Always happy to guide people (and I am available for hire) so do get in touch! industries@baldmosher.com tinyurl.com/baldmosherTipJar
+**baldmosher™ disclaimer:** all code was lifted, stolen, and adapted from the internet. Stack Overflow, forums, etc. Eventually I realised I knew more than the internet, so there's some hefty development in here, but I claim no copyright, nor do I recognise any of this as my IP, and I leave this legacy behind for anyone to utilise, fully open source / free use licence, do whatever you want with it, coding is fun, figure stuff out! But it's 2026... I'm pretty sure VBA is effectively dead now, and coding is almost automated, but I am fond of it, and I still use it sometimes. My top tip: don't use Copilot for creating VBA. Always happy to guide people (and I am available for hire) so do get in touch! tinyurl.com/baldmosherTipJar
 
 ---
 
